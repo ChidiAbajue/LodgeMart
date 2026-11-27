@@ -10,8 +10,10 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useLodgeMart } from '../context/LodgeMartContext';
+import { useToast } from '../context/ToastContext';
 import DelegatePinModal from '../components/DelegatePinModal';
 import ItemRatingModal from '../components/ItemRatingModal';
+import ConfirmModal from '../components/ConfirmModal';
 
 const STATUS_STEPS = [
   'Order Placed',
@@ -23,19 +25,29 @@ const STATUS_STEPS = [
 
 export default function StudentOrdersPage() {
   const { currentUser, orders, orderItems, cancelOrder } = useLodgeMart();
+  const { addToast } = useToast();
   const [delegateOrder, setDelegateOrder] = useState(null);
   const [ratingOrder, setRatingOrder] = useState(null);
-  const [cancelNotice, setCancelNotice] = useState('');
+  const [confirmCancelId, setConfirmCancelId] = useState(null);
+  const [tab, setTab] = useState('active');
 
-  const myOrders = orders.filter(
+  const userOrders = orders.filter(
     (o) => !currentUser?.email || o.studentEmail === currentUser.email
   );
+  const activeOrders = userOrders.filter(
+    (o) => o.status !== 'Collected' && o.status !== 'Cancelled' && o.status !== 'Left at Junction Kiosk'
+  );
+  const pastOrders = userOrders.filter(
+    (o) => o.status === 'Collected' || o.status === 'Cancelled' || o.status === 'Left at Junction Kiosk'
+  );
+  const myOrders = tab === 'active' ? activeOrders : pastOrders;
 
   const handleCancel = (orderId) => {
     const res = cancelOrder(orderId);
     if (res.ok) {
-      setCancelNotice(
-        `Order ${orderId} cancelled. ₦${res.refundAmount.toLocaleString()} refunded to your wallet (₦${res.fee} cancellation fee).`
+      addToast(
+        `Order ${orderId} cancelled. ₦${res.refundAmount.toLocaleString()} refunded to wallet.`,
+        'info'
       );
     }
   };
@@ -49,7 +61,15 @@ export default function StudentOrdersPage() {
             <p className="text-xs text-slate-500">
               Live status, 4-digit junction PINs, and roommate delegation
             </p>
-          </div>
+            <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
           <Link
             to="/shop"
             className="px-3.5 py-2 rounded-xl bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5"
@@ -57,19 +77,56 @@ export default function StudentOrdersPage() {
             <ShoppingBag className="w-3.5 h-3.5" />
             <span>New Order</span>
           </Link>
-        </div>
+          <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
 
-        {cancelNotice && (
-          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-semibold text-amber-800">
-            {cancelNotice}
-          </div>
-        )}
+        <div className="flex gap-2 p-1 bg-white rounded-xl border border-slate-200 w-fit">
+          <button
+            onClick={() => setTab('active')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold cursor-pointer ${
+              tab === 'active' ? 'bg-emerald-700 text-white' : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            Active ({activeOrders.length})
+          </button>
+          <button
+            onClick={() => setTab('past')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold cursor-pointer ${
+              tab === 'past' ? 'bg-emerald-700 text-white' : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            Past &amp; Cancelled ({pastOrders.length})
+          </button>
+          <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
 
         {myOrders.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center space-y-2">
             <p className="text-sm font-semibold text-slate-700">No orders yet</p>
             <p className="text-xs text-slate-500">Place your first batch order in the shop.</p>
-          </div>
+            <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
         ) : (
           <div className="space-y-5">
             {myOrders.map((order) => {
@@ -101,22 +158,54 @@ export default function StudentOrdersPage() {
                             Replacement Credit Issued
                           </span>
                         )}
-                      </div>
+                        <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
                       <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
                         <MapPin className="w-3.5 h-3.5 text-emerald-700" />
                         <span>
                           {order.campusZone} • {order.pickupHub} • {order.batchSlot}
                         </span>
                       </p>
-                    </div>
+                      <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
 
                     <div className="text-right">
                       <p className="text-sm font-bold text-slate-900">
                         ₦{order.totalAmount.toLocaleString()}
                       </p>
                       <p className="text-[11px] text-slate-400">{order.paymentMethod}</p>
-                    </div>
-                  </div>
+                      <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
+                    <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
 
                   {/* Step-by-Step Timeline */}
                   <div className="grid grid-cols-5 gap-1.5">
@@ -136,17 +225,41 @@ export default function StudentOrdersPage() {
                           >
                             {step}
                           </p>
-                        </div>
+                          <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
                       );
                     })}
-                  </div>
+                    <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
 
                   {/* High-Contrast 4-Digit PIN Box + Actions */}
                   <div className="p-4 rounded-xl bg-slate-900 text-white flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-emerald-700 flex items-center justify-center">
                         <KeyRound className="w-5 h-5" />
-                      </div>
+                        <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
                       <div>
                         <p className="text-[11px] uppercase tracking-wider text-slate-400">
                           {order.delegateInfo?.active
@@ -156,8 +269,24 @@ export default function StudentOrdersPage() {
                         <p className="text-2xl font-extrabold tracking-[0.25em]">
                           {order.pickupPin}
                         </p>
-                      </div>
-                    </div>
+                        <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
+                      <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
 
                     <div className="flex items-center gap-2">
                       {(order.status === 'Order Placed' ||
@@ -171,7 +300,7 @@ export default function StudentOrdersPage() {
                             <span>Delegate Pickup</span>
                           </button>
                           <button
-                            onClick={() => handleCancel(order.id)}
+                            onClick={() => setConfirmCancelId(order.id)}
                             className="px-3.5 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
                           >
                             <XCircle className="w-3.5 h-3.5" />
@@ -207,8 +336,24 @@ export default function StudentOrdersPage() {
                           <span>Rated</span>
                         </span>
                       )}
-                    </div>
-                  </div>
+                      <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
+                    <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
 
                   {/* Items List */}
                   <div className="border-t border-slate-100 pt-3 space-y-1.5">
@@ -227,16 +372,64 @@ export default function StudentOrdersPage() {
                           <span className="font-semibold text-slate-900">
                             ₦{(item.studentPrice * item.qty).toLocaleString()}
                           </span>
-                        </div>
+                          <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
                       ))}
-                    </div>
-                  </div>
-                </div>
+                      <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
+                    <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
+                  <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
               );
             })}
-          </div>
+            <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
         )}
-      </div>
+        <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
+      />
+    </div>
 
       <DelegatePinModal
         isOpen={Boolean(delegateOrder)}
@@ -251,6 +444,14 @@ export default function StudentOrdersPage() {
         items={
           ratingOrder ? orderItems.filter((i) => i.orderId === ratingOrder.id) : []
         }
+      />
+      <ConfirmModal
+        isOpen={Boolean(confirmCancelId)}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => confirmCancelId && handleCancel(confirmCancelId)}
+        title={`Cancel Order ${confirmCancelId || ''}?`}
+        message="A ₦200 cancellation fee applies. The remaining balance will be refunded to your LodgeMart Wallet immediately."
+        confirmLabel="Yes, Cancel Order"
       />
     </div>
   );

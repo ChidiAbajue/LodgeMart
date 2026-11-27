@@ -86,10 +86,10 @@ export function LodgeMartProvider({ children }) {
       (acc) => acc.email.toLowerCase() === email.trim().toLowerCase()
     );
     if (!account) {
-      return { ok: false, error: 'Account not found. Use one of the sandbox accounts below.' };
+      return { ok: false, error: 'Account not found. Check your email or use Developer Sandbox.' };
     }
-    if (!password || password.length < 4) {
-      return { ok: false, error: 'Please enter a valid password.' };
+    if (password !== account.password) {
+      return { ok: false, error: 'Incorrect password.' };
     }
     setCurrentUser(account);
     if (account.campusZone) setSelectedZone(account.campusZone);

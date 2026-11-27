@@ -10,11 +10,15 @@ import {
 } from 'lucide-react';
 import { RIDER_COMMISSION, MONNIFY_FEE_PER_ORDER } from '../data/seedData';
 import { useLodgeMart } from '../context/LodgeMartContext';
+import { useToast } from '../context/ToastContext';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function AdminDashboardPage() {
   const { orders, orderItems, vendors, resetSampleData, toggleVendorPriority } =
     useLodgeMart();
+  const { addToast } = useToast();
   const [expandedOrderId, setExpandedOrderId] = useState('#4082');
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
   // Unit Economics Calculations (Monnify ₦50 flat bank-transfer fee per order)
   const totalGMV = orders.reduce((sum, o) => sum + o.totalAmount, 0);
@@ -36,13 +40,26 @@ export default function AdminDashboardPage() {
             <LayoutDashboard className="w-4 h-4" />
             <span>Ops &amp; Unit Economics</span>
           </div>
-          <div className="space-y-1 text-xs text-slate-600">
-            <p className="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 font-semibold">
+          <nav className="space-y-1 text-xs text-slate-600">
+            <a
+              href="#overview"
+              className="block px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 font-semibold"
+            >
               Live Batch Overview
-            </p>
-            <p className="px-3 py-2">Multi-Vendor Split Inspector</p>
-            <p className="px-3 py-2">Vendor Quality Leaderboard</p>
-          </div>
+            </a>
+            <a
+              href="#split-inspector"
+              className="block px-3 py-2 rounded-lg hover:bg-slate-50"
+            >
+              Multi-Vendor Split Inspector
+            </a>
+            <a
+              href="#vendor-leaderboard"
+              className="block px-3 py-2 rounded-lg hover:bg-slate-50"
+            >
+              Vendor Quality Leaderboard
+            </a>
+          </nav>
         </div>
 
         {/* Discreet Reset Sample Data inside Admin Settings panel */}
@@ -51,7 +68,7 @@ export default function AdminDashboardPage() {
             Admin Settings
           </p>
           <button
-            onClick={resetSampleData}
+            onClick={() => setConfirmResetOpen(true)}
             className="w-full py-2 px-3 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -82,7 +99,7 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Live Batch & Unit Economics Strip */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div id="overview" className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <div className="bg-white p-4 rounded-xl border border-slate-200">
             <p className="text-[11px] text-slate-500 font-medium">Total GMV</p>
             <p className="text-lg font-extrabold text-slate-900 mt-1">
@@ -118,7 +135,7 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Multi-Vendor Order Split Inspector */}
-        <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <section id="split-inspector" className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200">
             <h2 className="font-bold text-slate-900 text-sm">
               Multi-Vendor Order Split Inspector
@@ -199,7 +216,7 @@ export default function AdminDashboardPage() {
         </section>
 
         {/* Vendor Quality & Routing Leaderboard */}
-        <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <section id="vendor-leaderboard" className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200">
             <h2 className="font-bold text-slate-900 text-sm">
               Vendor Quality &amp; Routing Leaderboard
@@ -263,6 +280,18 @@ export default function AdminDashboardPage() {
           </div>
         </section>
       </main>
+
+      <ConfirmModal
+        isOpen={confirmResetOpen}
+        onClose={() => setConfirmResetOpen(false)}
+        onConfirm={() => {
+          resetSampleData();
+          addToast('Sample data reset to defaults', 'info');
+        }}
+        title="Reset Sample Data?"
+        message="This will clear all new orders, vendor payouts, and rating changes and restore the initial UNIZIK pilot dataset."
+        confirmLabel="Reset Data"
+      />
     </div>
   );
 }

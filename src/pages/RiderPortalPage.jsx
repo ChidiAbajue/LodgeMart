@@ -14,6 +14,7 @@ import CameraCaptureModal from '../components/CameraCaptureModal';
 
 export default function RiderPortalPage() {
   const {
+    currentUser,
     vendors,
     orders,
     orderItems,
@@ -103,7 +104,9 @@ export default function RiderPortalPage() {
               <Bike className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="font-bold text-base">Tunde Bakare • Ifite Route</h1>
+              <h1 className="font-bold text-base">
+                {currentUser?.name || 'Dispatch Rider'} • Ifite Route
+              </h1>
               <p className="text-xs text-slate-400">Eke Awka → UNIZIK Junctions</p>
             </div>
           </div>
@@ -313,6 +316,7 @@ export default function RiderPortalPage() {
                                     <KeyRound className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
                                     <input
                                       type="text"
+                                      inputMode="numeric"
                                       maxLength={4}
                                       placeholder="Enter 4-digit PIN"
                                       value={pinInputs[order.id] || ''}

@@ -58,6 +58,7 @@ export default function ItemRatingModal({ isOpen, onClose, order, items }) {
                 <button
                   key={num}
                   type="button"
+                  aria-label={`Rate ${num} star${num > 1 ? 's' : ''}`}
                   onClick={() => setStars(num)}
                   className="p-1.5 cursor-pointer transition-transform hover:scale-110"
                 >
@@ -71,6 +72,9 @@ export default function ItemRatingModal({ isOpen, onClose, order, items }) {
                 </button>
               ))}
             </div>
+            <p className="text-xs font-semibold text-slate-700">
+              {['Poor', 'Fair', 'Good', 'Great', 'Excellent'][stars - 1]} ({stars}/5)
+            </p>
             <p className="text-xs text-slate-500">
               {stars >= 4
                 ? '4–5 stars credits all fulfilling stalls equally.'

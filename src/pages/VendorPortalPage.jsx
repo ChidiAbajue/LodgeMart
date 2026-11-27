@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Store, Wallet, CheckCircle2, Circle, Package, Save } from 'lucide-react';
 import { useLodgeMart } from '../context/LodgeMartContext';
+import { useToast } from '../context/ToastContext';
 
 export default function VendorPortalPage() {
   const {
@@ -14,8 +15,8 @@ export default function VendorPortalPage() {
   } = useLodgeMart();
 
   const vendor = vendors.find((v) => v.id === currentUser?.vendorId);
+  const { addToast } = useToast();
   const [drafts, setDrafts] = useState({});
-  const [savedId, setSavedId] = useState('');
 
   if (!vendor) {
     return (
@@ -265,13 +266,12 @@ export default function VendorPortalPage() {
                           draft.wholesalePrice,
                           draft.stockQty
                         );
-                        setSavedId(productId);
-                        setTimeout(() => setSavedId(''), 1500);
+                        addToast(`Updated ${product.name} price & stock`);
                       }}
                       className="mt-3.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer"
                     >
                       <Save className="w-3.5 h-3.5" />
-                      <span>{savedId === productId ? 'Saved' : 'Save'}</span>
+                      <span>Save</span>
                     </button>
                   </div>
                 </div>

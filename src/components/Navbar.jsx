@@ -50,15 +50,36 @@ export default function Navbar() {
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-emerald-700 flex items-center justify-center text-white font-bold text-lg">
-              L
-            </div>
-            <div>
+            <svg
+              width="36"
+              height="36"
+              viewBox="0 0 36 36"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+              className="shrink-0"
+            >
+              <rect width="36" height="36" rx="10" fill="#047857" />
+              <path
+                d="M11 15.5H25L23.5 25.5H12.5L11 15.5Z"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M14.5 15.5V13C14.5 11.067 16.067 9.5 18 9.5C19.933 9.5 21.5 11.067 21.5 13V15.5"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <circle cx="18" cy="20.5" r="1.5" fill="#FBBF24" />
+            </svg>
+            <div className="flex items-baseline gap-2">
               <span className="font-bold text-slate-900 text-lg tracking-tight">
                 LodgeMart
               </span>
-              <span className="hidden sm:inline-block ml-2 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                UNIZIK Pilot
+              <span className="hidden sm:inline-block text-xs font-medium text-emerald-700">
+                UNIZIK
               </span>
             </div>
           </Link>

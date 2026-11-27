@@ -9,6 +9,11 @@ import {
   Clock,
   Sparkles,
   CheckCircle2,
+  Search,
+  Wheat,
+  Droplets,
+  Package,
+  Coffee,
 } from 'lucide-react';
 import { CAMPUS_ZONES, BATCH_SLOTS, calculateDeliveryFee } from '../data/seedData';
 import { useLodgeMart } from '../context/LodgeMartContext';
@@ -17,6 +22,7 @@ import CheckoutModal from '../components/CheckoutModal';
 export default function StorefrontPage() {
   const {
     products,
+    vendors,
     selectedZone,
     handleZoneChange,
     selectedHub,
@@ -30,14 +36,39 @@ export default function StorefrontPage() {
 
   const navigate = useNavigate();
   const [category, setCategory] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   const currentZoneObj = CAMPUS_ZONES.find((z) => z.name === selectedZone) || CAMPUS_ZONES[0];
   const categories = ['All', ...new Set(products.map((p) => p.category))];
 
-  const filteredProducts =
-    category === 'All' ? products : products.filter((p) => p.category === category);
+  const filteredProducts = products.filter((p) => {
+    const matchesCat = category === 'All' || p.category === category;
+    const matchesQuery =
+      !searchQuery.trim() ||
+      p.name.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
+      p.unit.toLowerCase().includes(searchQuery.trim().toLowerCase());
+    return matchesCat && matchesQuery;
+  });
+
+  const getAvailableStock = (productId) =>
+    vendors
+      .filter((v) => v.ratingScore >= 3.5)
+      .reduce((sum, v) => sum + (v.inventory[productId]?.stockQty || 0), 0);
+
+  const getCategoryIcon = (cat) => {
+    switch (cat) {
+      case 'Grains & Staples':
+        return Wheat;
+      case 'Cooking Oils':
+        return Droplets;
+      case 'Provisions':
+        return Coffee;
+      default:
+        return Package;
+    }
+  };
 
   const cartDetails = cart
     .map((item) => {
@@ -115,21 +146,34 @@ export default function StorefrontPage() {
         </div>
       </div>
 
-      {/* Category Filter */}
-      <div className="max-w-7xl mx-auto px-4 pt-6 pb-2 flex items-center gap-2 overflow-x-auto">
-        {categories.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setCategory(cat)}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border cursor-pointer transition-colors ${
-              category === cat
-                ? 'bg-emerald-700 text-white border-emerald-700'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
+      {/* Search & Category Filter */}
+      <div className="max-w-7xl mx-auto px-4 pt-6 pb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="relative w-full sm:w-72">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search rice, garri, indomie..."
+            aria-label="Search products"
+            className="w-full pl-9 pr-3.5 py-2 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:border-emerald-700"
+          />
+        </div>
+        <div className="flex items-center gap-2 overflow-x-auto">
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setCategory(cat)}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border cursor-pointer transition-colors ${
+                category === cat
+                  ? 'bg-emerald-700 text-white border-emerald-700'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Unified SKU Grid */}
@@ -137,6 +181,8 @@ export default function StorefrontPage() {
         {filteredProducts.map((product) => {
           const inCart = cart.find((i) => i.productId === product.id);
           const savings = product.kioskComparePrice - product.studentPrice;
+          const stock = getAvailableStock(product.id);
+          const CatIcon = getCategoryIcon(product.category);
 
           return (
             <div
@@ -145,8 +191,8 @@ export default function StorefrontPage() {
             >
               <div className="space-y-3">
                 <div className="flex items-start justify-between">
-                  <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-2xl">
-                    {product.emoji}
+                  <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center">
+                    <CatIcon className="w-5 h-5" />
                   </div>
                   <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-semibold">
                     Save ₦{savings.toLocaleString()}
@@ -176,7 +222,14 @@ export default function StorefrontPage() {
                   </span>
                 </div>
 
-                {!inCart ? (
+                {stock === 0 ? (
+                  <button
+                    disabled
+                    className="w-full py-2.5 px-3 rounded-xl bg-slate-100 text-slate-400 text-xs font-semibold cursor-not-allowed"
+                  >
+                    Out of Stock
+                  </button>
+                ) : !inCart ? (
                   <button
                     onClick={() => addToCart(product.id, 1)}
                     className="w-full py-2.5 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
