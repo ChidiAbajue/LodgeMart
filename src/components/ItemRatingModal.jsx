@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Star, AlertTriangle } from 'lucide-react';
 import { useLodgeMart } from '../context/LodgeMartContext';
 
-const ISSUE_TAGS = ['Short Measure', 'Weevils/Dusty', 'Damaged Pack'];
+const ISSUE_TAGS = ['Short measure', 'Weevils / Dusty', 'Damaged pack', 'Missing item'];
 
 export default function ItemRatingModal({ isOpen, onClose, order, items }) {
   const { submitOrderRating } = useLodgeMart();

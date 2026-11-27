@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   CAMPUS_ZONES,
   BATCH_SLOTS,
-  DELIVERY_FEE,
+  calculateDeliveryFee,
   RIDER_COMMISSION,
   INITIAL_WALLET_BALANCE,
   SANDBOX_ACCOUNTS,
@@ -186,7 +186,28 @@ export function LodgeMartProvider({ children }) {
             if (b.ratingScore !== a.ratingScore) {
               return b.ratingScore - a.ratingScore;
             }
-            return (
+            const leaveAtKiosk = (orderId) => {
+    setState((prev) => ({
+      ...prev,
+      orders: prev.orders.map((o) =>
+        o.id === orderId
+          ? { ...o, status: 'Left at Junction Kiosk', deliveredTo: 'Partnered Junction Kiosk' }
+          : o
+      ),
+    }));
+  };
+
+  const toggleVendorPriority = (vendorId) => {
+    setState((prev) => ({
+      ...prev,
+      vendors: prev.vendors.map((v) => {
+        if (v.id !== vendorId || v.ratingScore < 4.5) return v;
+        return { ...v, priorityTier: !v.priorityTier };
+      }),
+    }));
+  };
+
+  return (
               a.inventory[cartItem.productId].wholesalePrice -
               b.inventory[cartItem.productId].wholesalePrice
             );
@@ -229,11 +250,8 @@ export function LodgeMartProvider({ children }) {
     const distinctVendors = new Set(newOrderItems.map((i) => i.assignedVendorId));
     const requiresBagMerge = distinctVendors.size >= 2;
 
-    const itemsSubtotal = newOrderItems.reduce(
-      (sum, item) => sum + item.studentPrice * item.qty,
-      0
-    );
-    const totalAmount = itemsSubtotal + DELIVERY_FEE;
+    const { totalFee: deliveryFee, itemsSubtotal } = calculateDeliveryFee(cart, state.products);
+    const totalAmount = itemsSubtotal + deliveryFee;
 
     if (paymentMethod === 'LodgeMart Wallet' && state.walletBalance < totalAmount) {
       return { ok: false, error: 'Insufficient LodgeMart Wallet balance.' };
@@ -254,7 +272,7 @@ export function LodgeMartProvider({ children }) {
         active: false,
       },
       requiresBagMerge,
-      deliveryFee: DELIVERY_FEE,
+      deliveryFee,
       totalAmount,
       paymentMethod,
       paymentRef: paymentRef || `LM-${Date.now()}`,
@@ -459,8 +477,11 @@ export function LodgeMartProvider({ children }) {
         };
       });
 
+      const hasFlagged = stars <= 3 && Object.keys(flaggedItemsMap).length > 0;
       const updatedOrders = prev.orders.map((o) =>
-        o.id === orderId ? { ...o, rated: true } : o
+        o.id === orderId
+          ? { ...o, rated: true, replacementCredit: hasFlagged }
+          : o
       );
 
       return {
@@ -552,6 +573,27 @@ export function LodgeMartProvider({ children }) {
     }));
   };
 
+  const leaveAtKiosk = (orderId) => {
+    setState((prev) => ({
+      ...prev,
+      orders: prev.orders.map((o) =>
+        o.id === orderId
+          ? { ...o, status: 'Left at Junction Kiosk', deliveredTo: 'Partnered Junction Kiosk' }
+          : o
+      ),
+    }));
+  };
+
+  const toggleVendorPriority = (vendorId) => {
+    setState((prev) => ({
+      ...prev,
+      vendors: prev.vendors.map((v) => {
+        if (v.id !== vendorId || v.ratingScore < 4.5) return v;
+        return { ...v, priorityTier: !v.priorityTier };
+      }),
+    }));
+  };
+
   return (
     <LodgeMartContext.Provider
       value={{
@@ -579,6 +621,8 @@ export function LodgeMartProvider({ children }) {
         resetSampleData,
         cancelOrder,
         updateVendorInventory,
+        leaveAtKiosk,
+        toggleVendorPriority,
       }}
     >
       {children}

@@ -125,10 +125,9 @@ export default function LandingPage() {
       <section className="max-w-7xl mx-auto px-4 py-12 grid sm:grid-cols-3 gap-5">
         <div className="p-5 rounded-2xl bg-white border border-slate-200 space-y-2">
           <MapPin className="w-6 h-6 text-emerald-700" />
-          <h3 className="font-bold text-slate-900">Junction Batch Drops</h3>
+          <h3 className="font-bold text-slate-900">Lecture-Aligned Drops</h3>
           <p className="text-sm text-slate-600">
-            Pick up at Dynamo Junction, School Gate, or Aroma Junction between lectures for a
-            flat ₦350.
+            From ₦350 to nearby lodge junctions (School Gate, Aroma, Dynamo).
           </p>
         </div>
         <div className="p-5 rounded-2xl bg-white border border-slate-200 space-y-2">
@@ -141,10 +140,9 @@ export default function LandingPage() {
         </div>
         <div className="p-5 rounded-2xl bg-white border border-slate-200 space-y-2">
           <Clock className="w-6 h-6 text-emerald-700" />
-          <h3 className="font-bold text-slate-900">100% Instant Vendor Payouts</h3>
+          <h3 className="font-bold text-slate-900">Smart Routing &amp; Instant Settlement</h3>
           <p className="text-sm text-slate-600">
-            Traders at Eke Awka get paid 100% on rider pickup with zero holdback—guaranteeing
-            fresh stock.
+            Multi-stall order splitting with live camera pickup verification.
           </p>
         </div>
       </section>

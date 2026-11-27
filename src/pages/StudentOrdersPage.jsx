@@ -96,6 +96,11 @@ export default function StudentOrdersPage() {
                             Delegated to {order.delegateInfo.name}
                           </span>
                         )}
+                        {order.replacementCredit && (
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            Replacement Credit Issued
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
                         <MapPin className="w-3.5 h-3.5 text-emerald-700" />

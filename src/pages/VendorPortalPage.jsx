@@ -67,11 +67,16 @@ export default function VendorPortalPage() {
         {/* Zero-Holdback Ledger Header */}
         <div className="bg-emerald-700 text-white rounded-2xl p-6 flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-emerald-100 text-xs font-semibold">
+            <div className="flex items-center gap-2 text-emerald-100 text-xs font-semibold flex-wrap">
               <Store className="w-4 h-4" />
               <span>
-                {vendor.name} • {vendor.market} ({vendor.stallNumber})
+                {vendor.name} • {vendor.market} ({vendor.stallNumber}) • {vendor.ratingScore}★
               </span>
+              {vendor.priorityTier && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-300/40 text-amber-100 text-[10px] font-bold">
+                  Priority Supplier Tier
+                </span>
+              )}
             </div>
             <h1 className="text-2xl font-extrabold">
               ₦{vendor.walletBalance.toLocaleString()}

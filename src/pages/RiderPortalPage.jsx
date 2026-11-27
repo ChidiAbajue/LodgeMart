@@ -22,6 +22,7 @@ export default function RiderPortalPage() {
     confirmStallPickup,
     markHubArrived,
     verifyHandoverPin,
+    leaveAtKiosk,
   } = useLodgeMart();
 
   const [phase, setPhase] = useState('pickup');
@@ -218,7 +219,7 @@ export default function RiderPortalPage() {
                         className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-800 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <Camera className="w-4 h-4 text-emerald-700" />
-                        <span>{photo ? 'Retake Stall Proof' : 'Capture Stall Proof'}</span>
+                        <span>{photo ? 'Retake Stall Photo' : 'Take Stall Photo'}</span>
                       </button>
 
                       <button
@@ -227,7 +228,7 @@ export default function RiderPortalPage() {
                         className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <CheckCircle2 className="w-4 h-4" />
-                        <span>Confirm Pickup &amp; Release Vendor Payout</span>
+                        <span>Confirm Pickup &amp; Release 100% Payout</span>
                       </button>
                     </div>
                   </div>
@@ -269,7 +270,7 @@ export default function RiderPortalPage() {
                         onClick={() => markHubArrived(hub)}
                         className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold cursor-pointer"
                       >
-                        Arrived at Hub
+                        Arrived at Pickup Hub
                       </button>
                     ) : (
                       <div className="px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold flex items-center gap-1.5 tabular-nums">
@@ -290,47 +291,56 @@ export default function RiderPortalPage() {
                             key={order.id}
                             className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5"
                           >
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
                               <div>
                                 <span className="font-bold text-slate-900 text-xs">
-                                  {order.id} • {order.studentName}
+                                  {order.id} •{' '}
+                                  {order.delegateInfo?.active
+                                    ? `Handover to Delegate: ${order.delegateInfo.name} (for ${order.studentName})`
+                                    : order.studentName}
                                 </span>
-                                {order.delegateInfo?.active && (
-                                  <span className="ml-2 text-[11px] font-semibold text-amber-700">
-                                    (Delegate: {order.delegateInfo.name})
-                                  </span>
-                                )}
                               </div>
                               <span className="text-[11px] font-semibold text-emerald-700">
                                 {order.status}
                               </span>
                             </div>
 
-                            {order.status !== 'Collected' ? (
-                              <div className="flex gap-2">
-                                <div className="relative flex-1">
-                                  <KeyRound className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-                                  <input
-                                    type="text"
-                                    maxLength={4}
-                                    placeholder="Enter 4-digit PIN"
-                                    value={pinInputs[order.id] || ''}
-                                    onChange={(e) =>
-                                      setPinInputs((prev) => ({
-                                        ...prev,
-                                        [order.id]: e.target.value,
-                                      }))
-                                    }
-                                    className="w-full pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-white text-xs font-bold tracking-widest focus:outline-none focus:border-emerald-700"
-                                  />
+                            {order.status !== 'Collected' &&
+                            order.status !== 'Left at Junction Kiosk' ? (
+                              <div className="space-y-2">
+                                <div className="flex gap-2">
+                                  <div className="relative flex-1">
+                                    <KeyRound className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                                    <input
+                                      type="text"
+                                      maxLength={4}
+                                      placeholder="Enter 4-digit PIN"
+                                      value={pinInputs[order.id] || ''}
+                                      onChange={(e) =>
+                                        setPinInputs((prev) => ({
+                                          ...prev,
+                                          [order.id]: e.target.value,
+                                        }))
+                                      }
+                                      className="w-full pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-white text-xs font-bold tracking-widest focus:outline-none focus:border-emerald-700"
+                                    />
+                                  </div>
+                                  <button
+                                    disabled={!arrivedAt}
+                                    onClick={() => handlePinSubmit(order.id)}
+                                    className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-semibold cursor-pointer"
+                                  >
+                                    Verify PIN
+                                  </button>
                                 </div>
-                                <button
-                                  disabled={!arrivedAt}
-                                  onClick={() => handlePinSubmit(order.id)}
-                                  className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-semibold cursor-pointer"
-                                >
-                                  Verify PIN
-                                </button>
+                                {arrivedAt && (
+                                  <button
+                                    onClick={() => leaveAtKiosk(order.id)}
+                                    className="w-full py-1.5 px-3 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-semibold cursor-pointer"
+                                  >
+                                    Leave at Partnered Junction Kiosk (Uncollected Fallback)
+                                  </button>
+                                )}
                               </div>
                             ) : (
                               <p className="text-xs font-semibold text-emerald-700">

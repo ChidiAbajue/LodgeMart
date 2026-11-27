@@ -10,7 +10,7 @@ import {
   Sparkles,
   CheckCircle2,
 } from 'lucide-react';
-import { CAMPUS_ZONES, BATCH_SLOTS, DELIVERY_FEE } from '../data/seedData';
+import { CAMPUS_ZONES, BATCH_SLOTS, calculateDeliveryFee } from '../data/seedData';
 import { useLodgeMart } from '../context/LodgeMartContext';
 import CheckoutModal from '../components/CheckoutModal';
 
@@ -46,16 +46,19 @@ export default function StorefrontPage() {
     })
     .filter(Boolean);
 
-  const itemsSubtotal = cartDetails.reduce(
-    (sum, item) => sum + item.product.studentPrice * item.qty,
-    0
-  );
+  const {
+    baseFee,
+    bulkSurcharge,
+    totalFee: deliveryFee,
+    itemsSubtotal,
+    bulkCount,
+  } = calculateDeliveryFee(cart, products);
   const kioskSubtotal = cartDetails.reduce(
     (sum, item) => sum + item.product.kioskComparePrice * item.qty,
     0
   );
   const totalSavings = kioskSubtotal - itemsSubtotal;
-  const totalPayable = itemsSubtotal > 0 ? itemsSubtotal + DELIVERY_FEE : 0;
+  const totalPayable = itemsSubtotal > 0 ? itemsSubtotal + deliveryFee : 0;
   const cartCount = cart.reduce((sum, i) => sum + i.qty, 0);
 
   const handleOrderSuccess = () => {
@@ -151,7 +154,14 @@ export default function StorefrontPage() {
                 </div>
 
                 <div>
-                  <h3 className="font-bold text-slate-900 text-sm">{product.name}</h3>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h3 className="font-bold text-slate-900 text-sm">{product.name}</h3>
+                    {product.isBulkItem && (
+                      <span className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-semibold">
+                        Bulk Item (+₦250)
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-500">{product.unit}</p>
                 </div>
               </div>
@@ -322,9 +332,18 @@ export default function StorefrontPage() {
                     <span>₦{itemsSubtotal.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>Flat Batch Delivery Fee</span>
-                    <span>₦{DELIVERY_FEE.toLocaleString()}</span>
+                    <span>
+                      Tiered Delivery Fee (
+                      {itemsSubtotal <= 10000 ? '₦1–₦10k' : '₦10k+ Bracket'})
+                    </span>
+                    <span>₦{baseFee.toLocaleString()}</span>
                   </div>
+                  {bulkSurcharge > 0 && (
+                    <div className="flex justify-between text-amber-700">
+                      <span>Bulk Item Surcharge ({bulkCount}× ₦250)</span>
+                      <span>+₦{bulkSurcharge.toLocaleString()}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm font-bold text-slate-900 pt-1 border-t border-slate-200">
                     <span>Total</span>
                     <span>₦{totalPayable.toLocaleString()}</span>

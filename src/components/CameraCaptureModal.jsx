@@ -42,7 +42,19 @@ export default function CameraCaptureModal({ isOpen, onClose, vendorName, onCapt
       setCameraError('Camera API unavailable. Use the live test-frame capture below.');
     }
 
-    return () => {
+    const handleFileFallback = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setPreviewUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return () => {
       active = false;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
@@ -87,6 +99,18 @@ export default function CameraCaptureModal({ isOpen, onClose, vendorName, onCapt
     onClose();
   };
 
+  const handleFileFallback = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setPreviewUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-md rounded-2xl border border-slate-200 overflow-hidden shadow-xl">
@@ -126,15 +150,29 @@ export default function CameraCaptureModal({ isOpen, onClose, vendorName, onCapt
             <canvas ref={canvasRef} className="hidden" />
           </div>
 
-          <div className="flex gap-2.5">
+          <div className="flex flex-col gap-2">
             {!previewUrl ? (
-              <button
-                onClick={handleSnap}
-                className="w-full py-3 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-sm flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Camera className="w-4 h-4" />
-                <span>Take Live Photo</span>
-              </button>
+              <>
+                <button
+                  onClick={handleSnap}
+                  className="w-full py-3 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-sm flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>Snap Photo</span>
+                </button>
+                {cameraError && (
+                  <label className="w-full py-2.5 px-4 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold text-center cursor-pointer hover:bg-slate-50">
+                    <span>Or Capture via Device Camera</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleFileFallback}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </>
             ) : (
               <>
                 <button

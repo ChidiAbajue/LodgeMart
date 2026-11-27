@@ -38,8 +38,47 @@ export const BATCH_SLOTS = [
 ];
 
 export const DELIVERY_FEE = 350;
+export const MONNIFY_FEE_PER_ORDER = 50;
 export const RIDER_COMMISSION = 150;
 export const INITIAL_WALLET_BALANCE = 50000;
+export const VIRTUAL_ACCOUNT_INFO = '8012345678 — Moniepoint MFB';
+
+export function calculateDeliveryFee(cart, products) {
+  if (!cart || cart.length === 0) {
+    return { baseFee: 0, bulkSurcharge: 0, totalFee: 0, itemsSubtotal: 0, bulkCount: 0 };
+  }
+
+  let itemsSubtotal = 0;
+  let bulkCount = 0;
+
+  cart.forEach((item) => {
+    const product = products.find((p) => p.id === item.productId);
+    if (!product) return;
+    itemsSubtotal += product.studentPrice * item.qty;
+    if (product.isBulkItem) {
+      bulkCount += item.qty;
+    }
+  });
+
+  if (itemsSubtotal === 0) {
+    return { baseFee: 0, bulkSurcharge: 0, totalFee: 0, itemsSubtotal: 0, bulkCount: 0 };
+  }
+
+  let baseFee = 350;
+  if (itemsSubtotal > 10000) {
+    const extraBrackets = Math.floor((itemsSubtotal - 10001) / 10000);
+    baseFee = 600 + extraBrackets * 250;
+  }
+
+  const bulkSurcharge = bulkCount * 250;
+  return {
+    baseFee,
+    bulkSurcharge,
+    totalFee: baseFee + bulkSurcharge,
+    itemsSubtotal,
+    bulkCount,
+  };
+}
 
 export const SANDBOX_ACCOUNTS = [
   {
@@ -114,6 +153,7 @@ export const INITIAL_PRODUCTS = [
     category: 'Noodles & Pasta',
     studentPrice: 8400,
     kioskComparePrice: 10800,
+    isBulkItem: true,
     emoji: '🍜',
   },
   {
@@ -163,6 +203,7 @@ export const INITIAL_VENDORS = [
     bankAccount: '0123456789 • GTBank',
     ratingScore: 4.8,
     ratingCount: 24,
+    priorityTier: true,
     walletBalance: 0,
     inventory: {
       'sku-rice': { wholesalePrice: 4700, stockQty: 45 },
@@ -179,6 +220,7 @@ export const INITIAL_VENDORS = [
     bankAccount: '9876543210 • Access Bank',
     ratingScore: 4.6,
     ratingCount: 19,
+    priorityTier: true,
     walletBalance: 0,
     inventory: {
       'sku-beans': { wholesalePrice: 5500, stockQty: 30 },
@@ -195,6 +237,7 @@ export const INITIAL_VENDORS = [
     bankAccount: '5566778899 • Zenith Bank',
     ratingScore: 3.4,
     ratingCount: 10,
+    priorityTier: false,
     walletBalance: 0,
     inventory: {
       'sku-rice': { wholesalePrice: 4650, stockQty: 20 },

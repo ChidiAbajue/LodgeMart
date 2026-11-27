@@ -8,14 +8,15 @@ import {
   ShieldCheck,
   AlertTriangle,
 } from 'lucide-react';
-import { RIDER_COMMISSION } from '../data/seedData';
+import { RIDER_COMMISSION, MONNIFY_FEE_PER_ORDER } from '../data/seedData';
 import { useLodgeMart } from '../context/LodgeMartContext';
 
 export default function AdminDashboardPage() {
-  const { orders, orderItems, vendors, resetSampleData } = useLodgeMart();
+  const { orders, orderItems, vendors, resetSampleData, toggleVendorPriority } =
+    useLodgeMart();
   const [expandedOrderId, setExpandedOrderId] = useState('#4082');
 
-  // Unit Economics Calculations
+  // Unit Economics Calculations (Monnify ₦50 flat bank-transfer fee per order)
   const totalGMV = orders.reduce((sum, o) => sum + o.totalAmount, 0);
   const totalDeliveryFees = orders.reduce((sum, o) => sum + o.deliveryFee, 0);
   const totalRetail = orderItems.reduce((sum, i) => sum + i.studentPrice * i.qty, 0);
@@ -23,7 +24,8 @@ export default function AdminDashboardPage() {
   const grossMargin = totalRetail - totalWholesale + totalDeliveryFees;
   const vendorPayoutsSettled = vendors.reduce((sum, v) => sum + v.walletBalance, 0);
   const riderCommissions = orders.filter((o) => o.status === 'Collected').length * RIDER_COMMISSION;
-  const netRetainedProfit = grossMargin - riderCommissions;
+  const monnifyFees = orders.length * MONNIFY_FEE_PER_ORDER;
+  const netRetainedProfit = grossMargin - riderCommissions - monnifyFees;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
@@ -223,12 +225,25 @@ export default function AdminDashboardPage() {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <div className="flex items-center gap-1 text-xs font-bold text-slate-900">
                       <Star className="w-4 h-4 fill-amber-500 text-amber-500" />
                       <span>{v.ratingScore}</span>
                       <span className="text-slate-400 font-normal">({v.ratingCount})</span>
                     </div>
+
+                    {v.ratingScore >= 4.5 && (
+                      <button
+                        onClick={() => toggleVendorPriority(v.id)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border cursor-pointer ${
+                          v.priorityTier
+                            ? 'bg-amber-50 border-amber-200 text-amber-700'
+                            : 'bg-slate-50 border-slate-200 text-slate-600'
+                        }`}
+                      >
+                        {v.priorityTier ? '★ Priority Supplier Tier' : 'Enable Priority Tier'}
+                      </button>
+                    )}
 
                     {isSuspended ? (
                       <span className="px-2.5 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 text-[11px] font-semibold flex items-center gap-1">
