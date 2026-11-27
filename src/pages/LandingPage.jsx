@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowRight,
-  Clock,
   ShieldCheck,
   MapPin,
   Store,
@@ -10,14 +9,16 @@ import {
   KeyRound,
   TrendingDown,
   Banknote,
+  Check,
 } from 'lucide-react';
 import { useLodgeMart } from '../context/LodgeMartContext';
-import { INITIAL_ORDERS, INITIAL_ORDER_ITEMS } from '../data/seedData';
+import { INITIAL_ORDERS, INITIAL_ORDER_ITEMS, ALL_HUBS, BATCH_SLOTS, DELIVERY_FEE } from '../data/seedData';
 import { getProductImage } from '../data/productImages';
 import Button from '../components/ui/Button';
 import ProductCard from '../components/ui/ProductCard';
 import SectionHeader from '../components/ui/SectionHeader';
 import RollingDigits from '../components/ui/RollingDigits';
+import Ticker from '../components/ui/Ticker';
 import Footer from '../components/Footer';
 import { EASE, SPRING_POP } from '../lib/motion';
 
@@ -25,120 +26,121 @@ const SAMPLE_ORDER = INITIAL_ORDERS[0];
 const SAMPLE_ITEMS = INITIAL_ORDER_ITEMS.filter((i) => i.orderId === SAMPLE_ORDER.id);
 const SAMPLE_STALLS = new Set(SAMPLE_ITEMS.map((i) => i.assignedVendorId)).size;
 
+const TICKER_ITEMS = [
+  ...ALL_HUBS.map((hub) => `Pickup at ${hub}`),
+  ...BATCH_SLOTS.map((s) => `${s.label} · ${s.time}`),
+  `₦${DELIVERY_FEE} flat per batch`,
+  'Pay with LodgeMart Wallet or Paystack',
+];
+
 /* ---------- Hero pieces ---------- */
 
-function MaskLine({ children, delay }) {
-  return (
-    <span className="block overflow-hidden pb-[0.08em] -mb-[0.08em]">
+/** Headline words rise out of a mask, one after another. */
+function Words({ text, start = 0 }) {
+  return text.split(' ').map((word, i) => (
+    <span key={i} className="inline-block overflow-hidden align-bottom pb-[0.06em] -mb-[0.06em] mr-[0.22em] last:mr-0">
       <motion.span
-        className="block"
-        initial={{ y: '105%' }}
+        className="inline-block"
+        initial={{ y: '110%' }}
         animate={{ y: '0%' }}
-        transition={{ duration: 0.6, ease: EASE, delay }}
+        transition={{ duration: 0.62, ease: EASE, delay: start + i * 0.045 }}
       >
-        {children}
+        {word}
       </motion.span>
     </span>
-  );
+  ));
 }
 
-function Underlined({ children, delay }) {
+/** A cut-out product that drops in and settles. */
+function Drop({ productId, alt, className, delay, eager }) {
   return (
-    <span className="relative inline-block">
-      {children}
-      <svg
-        className="absolute left-0 -bottom-[0.24em] w-full h-[0.24em] overflow-visible"
-        viewBox="0 0 300 20"
-        preserveAspectRatio="none"
-        aria-hidden="true"
-      >
-        <motion.path
-          d="M3 14 C 70 4, 180 2, 297 9"
-          fill="none"
-          stroke="var(--color-accent-500)"
-          strokeWidth="7"
-          strokeLinecap="round"
-          initial={{ pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: 0.5, ease: EASE, delay }}
-        />
-      </svg>
-    </span>
-  );
-}
-
-function PhotoTile({ productId, alt, className, delay }) {
-  return (
-    <motion.div
-      className={`relative overflow-hidden rounded-2xl bg-brand-100 ${className}`}
-      initial={{ clipPath: 'inset(100% 0% 0% 0% round 16px)' }}
-      animate={{ clipPath: 'inset(0% 0% 0% 0% round 16px)' }}
-      transition={{ duration: 0.7, ease: EASE, delay }}
-    >
-      <motion.img
-        src={getProductImage(productId)}
-        alt={alt}
-        width="640"
-        height="640"
-        fetchPriority={delay < 0.3 ? 'high' : 'auto'}
-        className="h-full w-full object-cover"
-        initial={{ scale: 1.18 }}
-        animate={{ scale: 1 }}
-        transition={{ duration: 0.9, ease: EASE, delay }}
-      />
-    </motion.div>
+    <motion.img
+      src={getProductImage(productId)}
+      alt={alt}
+      width="800"
+      height="800"
+      loading={eager ? 'eager' : 'lazy'}
+      fetchPriority={eager ? 'high' : 'auto'}
+      decoding="async"
+      className={`absolute select-none pointer-events-none ${className}`}
+      initial={{ y: -48, opacity: 0, scale: 0.9 }}
+      animate={{ y: 0, opacity: 1, scale: 1 }}
+      transition={{ type: 'spring', stiffness: 380, damping: 20, delay }}
+    />
   );
 }
 
 function HeroVisual() {
   return (
-    <div className="relative h-[340px] sm:h-[440px] lg:h-full lg:min-h-[520px]">
-      <div className="grid h-full grid-cols-5 grid-rows-2 gap-3">
-        <PhotoTile productId="sku-beans" alt="Honey beans from an Eke Awka stall" className="col-span-3 row-span-2" delay={0.25} />
-        <PhotoTile productId="sku-rice" alt="Local parboiled rice" className="col-span-2" delay={0.37} />
-        <PhotoTile productId="sku-garri" alt="Ijebu white garri" className="col-span-2" delay={0.49} />
-      </div>
-
-      {/* Proof card: the real seeded order this basket belongs to */}
+    <div className="relative mx-auto aspect-square w-full max-w-[560px]">
+      {/* orange disc the basket sits on */}
       <motion.div
-        initial={{ opacity: 0, y: 18, scale: 0.94 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ ...SPRING_POP, delay: 0.85 }}
-        className="absolute left-3 bottom-3 sm:left-5 sm:bottom-5 w-[min(300px,calc(100%-24px))] rounded-2xl bg-white p-4 shadow-lift"
+        aria-hidden="true"
+        className="absolute inset-[6%] rounded-full bg-accent-500 border-2 border-ink"
+        initial={{ scale: 0.6, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 22, delay: 0.15 }}
+      />
+      <Drop productId="sku-rice" alt="" className="w-[30%] right-[6%] top-[8%]" delay={0.45} />
+      <Drop productId="sku-oil" alt="Vegetable oil" className="w-[56%] left-[22%] top-[2%]" delay={0.35} eager />
+      <Drop productId="sku-indomie" alt="Instant noodles" className="w-[40%] left-[2%] top-[40%]" delay={0.55} />
+      <Drop productId="sku-beans" alt="Honey beans" className="w-[38%] right-[2%] top-[46%]" delay={0.65} />
+
+      {/* proof card: the seeded order #4082 */}
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...SPRING_POP, delay: 0.95 }}
+        className="absolute left-0 bottom-[2%] w-[min(300px,88%)] sm:w-[min(300px,70%)] rounded-2xl border-2 border-ink bg-cream p-4 text-ink shadow-[5px_5px_0_0_var(--color-ink)]"
       >
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-extrabold text-ink">Order {SAMPLE_ORDER.id}</p>
-          <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700">
+        <div className="flex items-center justify-between gap-2">
+          <p className="font-display text-lg font-extrabold whitespace-nowrap">Order {SAMPLE_ORDER.id}</p>
+          <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-brand-700 px-2 py-0.5 text-[11px] font-semibold text-white">
             <MapPin className="h-3 w-3" /> {SAMPLE_ORDER.pickupHub}
           </span>
         </div>
-        <p className="mt-1 text-xs text-muted">{SAMPLE_ORDER.batchSlot}</p>
-        <div className="mt-3 flex items-end justify-between">
+        <p className="mt-0.5 text-xs text-muted">{SAMPLE_ORDER.batchSlot}</p>
+        <div className="mt-3 flex items-end justify-between border-t-2 border-dashed border-ink/20 pt-3">
           <div>
-            <p className="text-[11px] font-medium text-muted">Pickup PIN</p>
-            <p className="font-mono text-lg font-bold tracking-[0.3em] text-ink">
-              ••{SAMPLE_ORDER.pickupPin.slice(-2)}
-            </p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">Pickup PIN</p>
+            <p className="font-mono text-xl font-bold tracking-[0.25em]">••{SAMPLE_ORDER.pickupPin.slice(-2)}</p>
           </div>
-          <p className="text-lg font-extrabold text-ink tabular-nums">
-            ₦{SAMPLE_ORDER.totalAmount.toLocaleString()}
-          </p>
+          <p className="font-display text-xl font-extrabold tabular-nums">₦{SAMPLE_ORDER.totalAmount.toLocaleString()}</p>
         </div>
       </motion.div>
 
+      {/* stall chip */}
       <motion.div
-        initial={{ opacity: 0, y: -12, scale: 0.94 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ ...SPRING_POP, delay: 0.97 }}
-        className="absolute right-3 top-3 sm:right-5 sm:top-5 inline-flex items-center gap-2 rounded-full bg-white py-1.5 pl-1.5 pr-3.5 shadow-lift"
+        initial={{ opacity: 0, scale: 0.7 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ ...SPRING_POP, delay: 1.1 }}
+        className="absolute right-0 top-0 inline-flex items-center gap-2 rounded-full border-2 border-ink bg-cream py-1.5 pl-1.5 pr-3.5 text-ink shadow-[3px_3px_0_0_var(--color-ink)]"
       >
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-500 text-ink">
-          <Store className="h-3.5 w-3.5" />
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-700 text-white">
+          <Check className="h-4 w-4" />
         </span>
-        <span className="text-xs font-bold text-ink">
+        <span className="text-xs font-bold">
           {SAMPLE_ITEMS.length} items · {SAMPLE_STALLS} Eke Awka stalls
         </span>
       </motion.div>
+    </div>
+  );
+}
+
+/** Countdown as a ticket stub: notched sides, dashed tear line. */
+function CutoffTicket({ mins, secs }) {
+  return (
+    <div className="relative mt-8 flex w-full max-w-md items-stretch rounded-2xl border-2 border-ink bg-cream text-ink shadow-[5px_5px_0_0_var(--color-ink)]">
+      <span aria-hidden="true" className="absolute -left-[9px] top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-ink bg-brand-700 [clip-path:inset(0_0_0_50%)]" />
+      <span aria-hidden="true" className="absolute -right-[9px] top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-ink bg-brand-700 [clip-path:inset(0_50%_0_0)]" />
+      <div className="flex-1 px-5 py-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Next cutoff</p>
+        <p className="font-display text-lg font-extrabold leading-tight">Midday Break</p>
+        <p className="hidden sm:block text-xs text-muted">Dynamo · School Gate · Aroma</p>
+      </div>
+      <div className="flex items-center border-l-2 border-dashed border-ink/30 px-5">
+        <RollingDigits value={`00:${mins}:${secs}`} className="font-display text-2xl sm:text-3xl font-extrabold text-brand-700" />
+      </div>
     </div>
   );
 }
@@ -171,7 +173,7 @@ export default function LandingPage() {
 
   const qtyOf = (id) => cart.find((c) => c.productId === id)?.qty || 0;
   const rise = (delay) => ({
-    initial: { opacity: 0, y: 14 },
+    initial: { opacity: 0, y: 16 },
     animate: { opacity: 1, y: 0 },
     transition: { duration: 0.5, ease: EASE, delay },
   });
@@ -187,67 +189,52 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen">
       {/* ================= HERO ================= */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-4 sm:pt-6" aria-labelledby="hero-title">
-        <div className="grid lg:grid-cols-12 gap-6 lg:gap-4 rounded-[28px] bg-mint p-4 sm:p-6 lg:p-5 lg:min-h-[calc(100svh-7rem)]">
-          <div className="lg:col-span-6 flex flex-col justify-center px-2 py-4 sm:px-4 lg:px-10 lg:py-10">
+      <section className="relative overflow-hidden bg-brand-700 text-cream" aria-labelledby="hero-title">
+        <div className="max-w-7xl mx-auto grid items-center gap-10 px-4 sm:px-6 pt-10 pb-14 sm:pt-14 lg:grid-cols-12 lg:gap-6 lg:min-h-[calc(100svh-4rem-3.5rem)] lg:py-12">
+          <div className="lg:col-span-7">
             <motion.p
               {...rise(0)}
-              className="inline-flex w-fit items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-brand-700"
+              className="inline-flex items-center gap-2 rounded-full border-2 border-cream/25 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-cream/85"
             >
-              <span className="h-1.5 w-1.5 rounded-full bg-accent-500" />
+              <span className="h-2 w-2 rounded-full bg-accent-500" />
               UNIZIK Pilot · Ifite, Tempsite &amp; Aroma
             </motion.p>
 
             <h1
               id="hero-title"
-              className="mt-5 text-[2.6rem] leading-[1.02] sm:text-6xl lg:text-[4.1rem] font-extrabold tracking-[-0.045em] text-ink"
+              className="mt-6 font-display font-extrabold text-[2.6rem] leading-[0.94] min-[400px]:text-[2.85rem] sm:text-[4.2rem] lg:text-[4.6rem] xl:text-[5.4rem] tracking-[-0.045em] [&>span]:sm:whitespace-nowrap"
             >
-              <MaskLine delay={0.05}>Eke Awka prices,</MaskLine>
-              <MaskLine delay={0.13}>delivered to your</MaskLine>
-              <MaskLine delay={0.21}>
-                <Underlined delay={0.6}>
-                  <span className="text-brand-700">lodge junction.</span>
-                </Underlined>
-              </MaskLine>
+              <span className="block"><Words text="Eke Awka prices." start={0.05} /></span>
+              <span className="block"><Words text="Delivered to your" start={0.2} /></span>
+              <span className="block text-accent-500"><Words text="lodge junction." start={0.35} /></span>
             </h1>
 
-            <motion.p {...rise(0.32)} className="mt-6 max-w-md text-base sm:text-lg leading-relaxed text-muted">
+            <motion.p {...rise(0.5)} className="mt-6 max-w-lg text-base sm:text-lg leading-relaxed text-cream/80">
               Skip the market commute and the 25%–35% campus kiosk markup. Join a batch run timed to
               your lecture breaks for a flat ₦350.
             </motion.p>
 
-            <motion.div {...rise(0.4)} className="mt-7 grid grid-cols-2 gap-3 sm:flex">
-              <Button to="/shop" size="lg" className="px-4 sm:px-7">
+            <motion.div {...rise(0.6)} className="mt-8 grid grid-cols-2 gap-3 sm:flex sm:gap-4">
+              <Button to="/shop" size="lg" variant="accent" className="px-4 sm:px-7">
                 Shop this batch <ArrowRight className="hidden min-[400px]:block w-4 h-4" />
               </Button>
-              <Button to="/login" size="lg" variant="secondary" className="px-4 sm:px-7">
+              <Button to="/login" size="lg" variant="onDark" className="px-4 sm:px-7">
                 Portal sign in
               </Button>
             </motion.div>
 
-            <motion.div
-              {...rise(0.5)}
-              className="mt-6 sm:mt-8 flex items-center justify-between gap-3 rounded-2xl bg-white p-3.5 sm:p-4 sm:max-w-md"
-            >
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-700 text-white">
-                  <Clock className="h-5 w-5" />
-                </span>
-                <div>
-                  <p className="text-xs font-semibold text-muted">Next cutoff</p>
-                  <p className="text-sm font-bold text-ink">Midday Break</p>
-                  <p className="hidden sm:block text-xs text-muted">Dynamo · School Gate · Aroma</p>
-                </div>
-              </div>
-              <RollingDigits value={`00:${mins}:${secs}`} className="text-xl sm:text-2xl font-extrabold text-brand-700" />
+            <motion.div {...rise(0.7)}>
+              <CutoffTicket mins={mins} secs={secs} />
             </motion.div>
           </div>
 
-          <div className="lg:col-span-6">
+          <div className="lg:col-span-5">
             <HeroVisual />
           </div>
         </div>
       </section>
+
+      <Ticker items={TICKER_ITEMS} label="Hubs, batch times and fees" />
 
       {/* ================= HOW IT WORKS ================= */}
       <section id="how-it-works" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24" aria-labelledby="how-title">
