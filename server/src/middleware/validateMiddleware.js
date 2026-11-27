@@ -5,3 +5,9 @@ export const validate = (schema) => (req, res, next) => {
   req.body = schema.parse(req.body);
   next();
 };
+
+// validateParams(schema) — same for URL params (e.g. /orders/:id must be a uuid).
+export const validateParams = (schema) => (req, res, next) => {
+  req.params = schema.parse(req.params);
+  next();
+};

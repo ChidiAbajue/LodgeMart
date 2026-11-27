@@ -52,3 +52,12 @@ export const registerLimit = rateLimit({
   windowSeconds: 60 * 60,
   key: (req) => req.ip,
 });
+
+// Order writes (place, cancel, delegate) — per logged-in user. Runs after
+// authenticate, so req.user is set.
+export const orderWriteLimit = rateLimit({
+  name: 'order-write',
+  max: 20,
+  windowSeconds: 10 * 60,
+  key: (req) => req.user?.id,
+});

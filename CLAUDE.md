@@ -64,7 +64,7 @@ ogaemeka@lodgemart.ng / mamangozi@lodgemart.ng (vendor), tunde.dispatch@lodgemar
 |---|---|---|
 | 1 | Setup: Express, Prisma schema, Postgres+Redis (docker), env validation, helmet, CORS, error format, seed, `/api/health`, tests | ✅ Verified 2026-11-27 — 14/14 tests, manual run, 0 audit vulns |
 | 2 | Auth: register/login/logout/me, JWT, bcrypt, role + ownership middleware, Redis rate limits | ✅ Verified 2026-11-27 — 42/42 tests, manual run, 0 audit vulns |
-| 3 | Catalog + orders: server-side routing (transaction, no overselling), my orders, cancel, delegate PIN | ⬜ |
+| 3 | Catalog + orders: server-side routing (transaction, no overselling), my orders, cancel, delegate PIN | ✅ Verified 2026-11-27 — 80/80 tests (×3 runs), manual run, 0 audit vulns |
 | 4 | Vendor + rider: packing, stall pickup (per batch), hub arrival, PIN handover (single-use, rate-limited) | ⬜ |
 | 5 | Paystack (test mode): initialize, webhook (signature + idempotency), vendor transfers; photo upload | ⬜ |
 | 6 | Ratings + admin summary | ⬜ |
@@ -98,12 +98,29 @@ immediate). Public register creates STUDENT only. Redis down → auth answers 50
 - **Windows:** run `npm test` from PowerShell / a `C:\` path. From Git Bash (`/c/...` lower-case drive) vitest
   fails with "failed to find the runner" (drive-letter case mismatch).
 - `depcheck` flags `pg` as unused — false positive, it's required by `@prisma/adapter-pg`.
+- Tests print a pg `DeprecationWarning: client.query() when the client is already executing` — it comes from
+  inside `@prisma/adapter-pg` transactions, not our code. Harmless until pg@9; revisit when Prisma updates the adapter.
 
 ## Known prototype bugs to fix in the backend
 
 - Stall payout paid for **all** uncollected items regardless of batch → now scoped per vendor/slot/date (unique constraint).
 - PIN handover didn't check status → order could be collected twice and rider paid twice → `RiderEarning.orderId` is unique; handover requires `READY_AT_HUB`.
-- Routing happened per order at checkout without locking → must run in a DB transaction to prevent overselling.
+- Routing happened per order at checkout without locking → now in a DB transaction with conditional stock
+  decrements (`updateMany ... stockQty >= qty`); a lost race re-routes (max 3 tries) then 409 OUT_OF_STOCK.
+- Cancel could refund twice on double-click → status flip is a conditional update; only one request refunds.
+
+## Phase 3 API (for Chidi — full docs in Phase 7)
+
+All money in **kobo**. Errors: `{ error: { code, message, details? } }`.
+- `GET /api/catalog` (public) → `{ products[{id,name,unit,category,emoji,studentPriceKobo,kioskComparePriceKobo,inStock}], zones[{id,name,hubs[{id,name}]}], batchSlots[{id,label,startTime,endTime,cutoffTime,badge,nextBatchDate}], fees }`
+- `POST /api/orders` (student) body `{ items:[{productId,qty}], zoneId, hubId, batchSlotId, paymentMethod:"WALLET" }`
+  → 201 `{ order }` (incl. `pickupPin`, `orderLabel` "#4083"). Errors: 400 validation/INVALID_HUB/INVALID_BATCH_SLOT/
+  PRODUCT_UNAVAILABLE, 402 INSUFFICIENT_FUNDS, 409 OUT_OF_STOCK. Client must NOT send prices (rejected).
+- `GET /api/orders` (student, own, newest 50) · `GET /api/orders/:id` (owner or admin; admin never sees PIN)
+- `POST /api/orders/:id/cancel` (owner; ORDER_PLACED/PACKED_AT_MARKET only) → `{ refundKobo, cancellationFeeKobo }`
+- `POST /api/orders/:id/delegate` (owner) body `{ name, phone }` → `{ pickupPin }` (new PIN; old one stops working)
+
+Business constants: `server/src/config/business.js`. Batch date = today if before the slot cutoff (Lagos), else tomorrow.
 
 ## Log
 
@@ -122,3 +139,10 @@ immediate). Public register creates STUDENT only. Redis down → auth answers 50
   Tests 42/42 (tampered/`alg=none`/expired/revoked tokens, role escalation, disabled accounts, limits).
   Manual: full login→me→logout→401 flow, logs redact Authorization, Redis stopped → 503, recovers.
   `npm audit` 0 vulns; depcheck clean (pg false positive); staged-diff secret scan clean.
+- **2026-11-27 — Phase 3 verified** on `backend/phase-3-orders` (branched from phase 2, so it contains phases 1–3).
+  Catalog (public, no wholesale/stock/bank leak), wallet orders with prototype routing (single-stop → split by
+  rating then wholesale; vendors < 3.5★ or inactive excluded; bag-merge flag), my orders, cancel (₦200 fee, restock,
+  refund once), delegate (new PIN). Order writes rate-limited 20/10min per user. Tests 80/80, stable over 3 runs —
+  incl. 8 parallel orders for 3 items (exactly 3 succeed), parallel wallet overspend, parallel double-cancel.
+  Manual: #4083 placed (₦11,650, split Emeka/Ngozi, next-day batch after cutoff), delegate, cancel → wallet −₦200.
+  Fixed flaky setup (hookTimeout 30s; phase 3 creates test users directly). Phases 2–3 not pushed yet (user's call).

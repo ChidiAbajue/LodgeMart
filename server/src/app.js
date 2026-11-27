@@ -8,6 +8,8 @@ import { authenticate } from './middleware/authMiddleware.js';
 import { errorHandler, notFoundHandler } from './middleware/errorMiddleware.js';
 import { healthRoutes } from './routes/healthRoutes.js';
 import { authRoutes } from './routes/authRoutes.js';
+import { catalogRoutes } from './routes/catalogRoutes.js';
+import { orderRoutes } from './routes/orderRoutes.js';
 
 export function createApp() {
   const app = express();
@@ -35,6 +37,8 @@ export function createApp() {
 
   app.use('/api/health', healthRoutes);
   app.use('/api/auth', authRoutes);
+  app.use('/api/catalog', catalogRoutes);
+  app.use('/api/orders', orderRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

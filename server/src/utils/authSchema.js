@@ -9,7 +9,7 @@ const newPassword = z
   .min(8, 'Password must be at least 8 characters')
   .refine((p) => Buffer.byteLength(p, 'utf8') <= 72, 'Password is too long (max 72 bytes)');
 
-const name = z
+export const personName = z
   .string()
   .trim()
   .min(2, 'Name is too short')
@@ -17,16 +17,16 @@ const name = z
   .regex(/^\p{L}[\p{L} .'-]*$/u, 'Name can only contain letters, spaces and . \' -');
 
 // Nigerian mobile: 0803xxxxxxx or +234803xxxxxxx
-const phone = z
+export const nigerianPhone = z
   .string()
   .trim()
   .regex(/^(?:\+234|0)[789][01]\d{8}$/, 'Enter a valid Nigerian phone number');
 
 // .strict() rejects unknown fields — e.g. a client trying to send role: "ADMIN".
 export const registerSchema = z.strictObject({
-  name,
+  name: personName,
   email,
-  phone: phone.optional(),
+  phone: nigerianPhone.optional(),
   password: newPassword,
 });
 

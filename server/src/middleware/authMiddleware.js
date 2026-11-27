@@ -8,6 +8,7 @@ const PUBLIC_ROUTES = new Set([
   'GET /api/health',
   'POST /api/auth/register',
   'POST /api/auth/login',
+  'GET /api/catalog',
 ]);
 
 function routeKey(req) {
