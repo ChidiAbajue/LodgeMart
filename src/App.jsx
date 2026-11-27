@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { MotionConfig } from 'motion/react';
 import { LodgeMartProvider, useLodgeMart } from './context/LodgeMartContext';
 import Navbar from './components/Navbar';
 import LandingPage from './pages/LandingPage';
@@ -31,9 +32,10 @@ function ShopRoute({ children }) {
 
 export default function App() {
   return (
+    <MotionConfig reducedMotion="user">
     <LodgeMartProvider>
       <BrowserRouter>
-        <div className="min-h-screen bg-slate-50 text-slate-900">
+        <div className="min-h-screen bg-canvas text-ink">
           <Navbar />
           <Routes>
             <Route path="/" element={<LandingPage />} />
@@ -83,5 +85,6 @@ export default function App() {
         </div>
       </BrowserRouter>
     </LodgeMartProvider>
+    </MotionConfig>
   );
 }
