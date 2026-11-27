@@ -34,6 +34,9 @@ function CountBadge({ count, className = '' }) {
   );
 }
 
+// Pages that open with a dark photo header, so the bar starts transparent over it.
+const PHOTO_HEADER_ROUTES = ['/', '/shop'];
+
 export default function Navbar() {
   const { currentUser, logout, walletBalance, cart } = useLodgeMart();
   const location = useLocation();
@@ -45,7 +48,7 @@ export default function Navbar() {
   const { scrollY } = useScroll();
   const [scrolled, setScrolled] = useState(false);
   useMotionValueEvent(scrollY, 'change', (y) => setScrolled(y > 80));
-  const dark = location.pathname === '/' && !scrolled;
+  const dark = PHOTO_HEADER_ROUTES.includes(location.pathname) && !scrolled;
 
   const handleLogout = () => {
     logout();
