@@ -1,0 +1,261 @@
+// LodgeMart database schema — mirrors the prototype (src/context/LodgeMartContext.jsx)
+// All money is stored in KOBO as integers (₦1 = 100 kobo).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Connection URL lives in prisma.config.js (Prisma 7).
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  STUDENT
+  VENDOR
+  RIDER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT // Paystack started, not yet confirmed by webhook
+  ORDER_PLACED
+  PACKED_AT_MARKET
+  RIDER_IN_TRANSIT
+  READY_AT_HUB
+  COLLECTED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  WALLET
+  PAYSTACK
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String
+  name              String
+  phone             String?
+  role              Role      @default(STUDENT)
+  isActive          Boolean   @default(true)
+  // Student fields
+  walletBalanceKobo Int       @default(0)
+  defaultZoneId     String?
+  defaultHubId      String?
+  // Vendor login is linked to one vendor stall
+  vendorId          String?   @unique
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  defaultZone  CampusZone?   @relation(fields: [defaultZoneId], references: [id])
+  defaultHub   Hub?          @relation(fields: [defaultHubId], references: [id])
+  vendor       Vendor?       @relation(fields: [vendorId], references: [id])
+  orders       Order[]
+  stallPickups StallPickup[]
+  hubArrivals  HubArrival[]
+  earnings     RiderEarning[]
+}
+
+model CampusZone {
+  id    String    @id // e.g. "ifite"
+  name  String    @unique
+  hubs  ZoneHub[]
+  orders Order[]
+  users User[]
+}
+
+model Hub {
+  id       String       @id // e.g. "dynamo-junction"
+  name     String       @unique
+  zones    ZoneHub[]
+  orders   Order[]
+  users    User[]
+  arrivals HubArrival[]
+}
+
+model ZoneHub {
+  zoneId String
+  hubId  String
+  zone   CampusZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  hub    Hub        @relation(fields: [hubId], references: [id], onDelete: Cascade)
+
+  @@id([zoneId, hubId])
+}
+
+model BatchSlot {
+  id         String @id // "early" | "midday" | "evening"
+  label      String
+  startTime  String // "HH:mm", Africa/Lagos
+  endTime    String
+  cutoffTime String
+  badge      String?
+  sortOrder  Int    @default(0)
+
+  orders       Order[]
+  stallPickups StallPickup[]
+  hubArrivals  HubArrival[]
+}
+
+model Product {
+  id                    String  @id // e.g. "sku-rice"
+  name                  String
+  unit                  String
+  category              String
+  studentPriceKobo      Int
+  kioskComparePriceKobo Int
+  emoji                 String?
+  isActive              Boolean @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  inventory  VendorInventory[]
+  orderItems OrderItem[]
+}
+
+model Vendor {
+  id                String   @id // e.g. "v-emeka"
+  name              String
+  market            String
+  stallNumber       String
+  bankName          String
+  bankAccountNumber String
+  ratingScore       Decimal  @default(5) @db.Decimal(3, 2)
+  ratingCount       Int      @default(0)
+  payoutBalanceKobo Int      @default(0) // total released to this vendor
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user         User?
+  inventory    VendorInventory[]
+  orderItems   OrderItem[]
+  stallPickups StallPickup[]
+}
+
+model VendorInventory {
+  vendorId           String
+  productId          String
+  wholesalePriceKobo Int
+  stockQty           Int
+  updatedAt          DateTime @updatedAt
+
+  vendor  Vendor  @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([vendorId, productId])
+}
+
+model Order {
+  id               String        @id @default(uuid())
+  orderNumber      Int           @unique @default(autoincrement()) // shown as "#4082"
+  studentId        String
+  zoneId           String
+  hubId            String
+  batchSlotId      String
+  batchDate        DateTime      @db.Date // which day's batch this order belongs to
+  status           OrderStatus   @default(ORDER_PLACED)
+  pickupPin        String // only ever returned to the owning student
+  delegateName     String?
+  delegatePhone    String?
+  requiresBagMerge Boolean       @default(false)
+  subtotalKobo     Int
+  deliveryFeeKobo  Int
+  totalKobo        Int
+  paymentMethod    PaymentMethod
+  paymentRef       String        @unique
+  paidAt           DateTime?
+  deliveredTo      String?
+  collectedAt      DateTime?
+  ratedAt          DateTime?
+  cancelledAt      DateTime?
+  refundKobo       Int?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  student   User         @relation(fields: [studentId], references: [id])
+  zone      CampusZone   @relation(fields: [zoneId], references: [id])
+  hub       Hub          @relation(fields: [hubId], references: [id])
+  batchSlot BatchSlot    @relation(fields: [batchSlotId], references: [id])
+  items     OrderItem[]
+  earning   RiderEarning?
+
+  @@index([studentId])
+  @@index([batchDate, batchSlotId, status])
+}
+
+model OrderItem {
+  id                String    @id @default(uuid())
+  orderId           String
+  productId         String
+  vendorId          String
+  qty               Int
+  studentPriceKobo  Int // price snapshot at order time
+  wholesaleCostKobo Int // vendor cost snapshot at order time
+  vendorPacked      Boolean   @default(false)
+  riderPickedUp     Boolean   @default(false)
+  stallPickupId     String?
+  itemRating        Int?
+  issueTag          String?
+
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product      @relation(fields: [productId], references: [id])
+  vendor      Vendor       @relation(fields: [vendorId], references: [id])
+  stallPickup StallPickup? @relation(fields: [stallPickupId], references: [id])
+
+  @@index([vendorId, riderPickedUp])
+}
+
+model StallPickup {
+  id           String       @id @default(uuid())
+  vendorId     String
+  riderId      String
+  batchSlotId  String
+  batchDate    DateTime     @db.Date
+  photoUrl     String
+  capturedAt   DateTime     @default(now())
+  payoutKobo   Int
+  payoutStatus PayoutStatus @default(PENDING)
+  transferRef  String?      @unique
+
+  vendor    Vendor      @relation(fields: [vendorId], references: [id])
+  rider     User        @relation(fields: [riderId], references: [id])
+  batchSlot BatchSlot   @relation(fields: [batchSlotId], references: [id])
+  items     OrderItem[]
+
+  // One pickup (and one payout) per vendor per batch
+  @@unique([vendorId, batchSlotId, batchDate])
+}
+
+model HubArrival {
+  id          String    @id @default(uuid())
+  riderId     String
+  hubId       String
+  batchSlotId String
+  batchDate   DateTime  @db.Date
+  arrivedAt   DateTime  @default(now())
+
+  rider     User      @relation(fields: [riderId], references: [id])
+  hub       Hub       @relation(fields: [hubId], references: [id])
+  batchSlot BatchSlot @relation(fields: [batchSlotId], references: [id])
+
+  @@unique([hubId, batchSlotId, batchDate])
+}
+
+model RiderEarning {
+  id         String   @id @default(uuid())
+  riderId    String
+  orderId    String   @unique // one commission per order, ever
+  amountKobo Int
+  createdAt  DateTime @default(now())
+
+  rider User  @relation(fields: [riderId], references: [id])
+  order Order @relation(fields: [orderId], references: [id])
+}
