@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import '@fontsource-variable/geist/wght.css'
-import '@fontsource/instrument-serif/latin-400-italic.css'
+import '@fontsource-variable/oswald/wght.css'
+import '@fontsource-variable/source-sans-3/wght.css'
 import './index.css'
 import App from './App.jsx'
 

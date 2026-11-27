@@ -1,24 +1,37 @@
-import { Link } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
+import Reveal from './Reveal';
 
-export default function SectionHeader({ title, kicker, action, id }) {
+/** Kicker + big condensed heading (+ optional lede). Centered by default, like a menu board. */
+export default function SectionHeader({ kicker, title, lede, id, align = 'center', tone = 'light', action }) {
+  const center = align === 'center';
+  const dark = tone === 'dark';
   return (
-    <div className="flex items-end justify-between gap-4 mb-6">
-      <div>
-        {kicker && <p className="text-sm font-semibold text-accent-700 mb-1.5">{kicker}</p>}
-        <h2 id={id} className="text-2xl sm:text-3xl font-extrabold tracking-[-0.025em] text-ink">
-          {title}
-        </h2>
-      </div>
-      {action && (
-        <Link
-          to={action.to}
-          className="group shrink-0 inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-line bg-white text-sm font-semibold text-ink transition-colors hover:border-ink/25"
+    <Reveal
+      stagger={0.08}
+      className={`mb-10 sm:mb-14 flex flex-col gap-4 ${center ? 'items-center text-center' : 'sm:flex-row sm:items-end sm:justify-between'}`}
+    >
+      <div className={center ? 'max-w-2xl' : 'max-w-xl'}>
+        {kicker && (
+          <Reveal.Item
+            as="p"
+            className={`font-display text-xs font-medium uppercase tracking-[0.25em] ${dark ? 'text-accent-400' : 'text-accent-700'}`}
+          >
+            {kicker}
+          </Reveal.Item>
+        )}
+        <Reveal.Item
+          as="h2"
+          id={id}
+          className={`mt-3 font-display text-4xl sm:text-5xl lg:text-6xl font-semibold uppercase leading-[1.02] tracking-[-0.01em] ${dark ? 'text-white' : 'text-ink'}`}
         >
-          {action.label}
-          <ArrowRight className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-0.5" />
-        </Link>
-      )}
-    </div>
+          {title}
+        </Reveal.Item>
+        {lede && (
+          <Reveal.Item as="p" className={`mt-4 text-base sm:text-lg leading-relaxed ${dark ? 'text-white/70' : 'text-muted'}`}>
+            {lede}
+          </Reveal.Item>
+        )}
+      </div>
+      {action && <Reveal.Item>{action}</Reveal.Item>}
+    </Reveal>
   );
 }

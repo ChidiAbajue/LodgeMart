@@ -41,7 +41,7 @@ export default function Navbar() {
 
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
-  // Over the landing hero the bar is transparent on the dark stage; past it, frosted cream.
+  // Over the landing hero photo the bar is transparent; once scrolled it turns solid white.
   const { scrollY } = useScroll();
   const [scrolled, setScrolled] = useState(false);
   useMotionValueEvent(scrollY, 'change', (y) => setScrolled(y > 80));
@@ -78,40 +78,36 @@ export default function Navbar() {
       <header
         className={`sticky top-0 z-40 transition-[background-color,border-color,color] duration-500 ${
           dark
-            ? 'bg-transparent border-b border-transparent text-cream'
-            : 'bg-cream/80 backdrop-blur-xl border-b border-ink/10 text-ink'
+            ? 'bg-transparent text-white'
+            : 'bg-white text-ink shadow-[0_6px_24px_-12px_rgb(0_0_0/0.25)]'
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <Link to="/" className="flex items-center gap-3 rounded-lg" aria-label="LodgeMart home">
             <Logo markClassName="h-8 w-auto" animated tone={dark ? 'light' : 'brand'} />
-            <span className={`hidden sm:inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full ${dark ? 'bg-white/10 text-cream' : 'bg-brand-50 text-brand-700'}`}>
+            <span className={`hidden sm:inline-block font-display text-[10px] font-medium uppercase tracking-[0.2em] px-2 py-1 rounded border ${dark ? 'border-white/30 text-white/80' : 'border-brand-700/30 text-brand-700'}`}>
               UNIZIK Pilot
             </span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1" aria-label="Main">
+          <nav className="hidden md:flex items-center gap-8" aria-label="Main">
             {navItems.map((item) => {
-              const Icon = item.icon;
               const active = location.pathname === item.to;
               return (
                 <Link
                   key={item.to}
                   to={item.to}
                   aria-current={active ? 'page' : undefined}
-                  className={`relative flex items-center gap-2 h-10 px-4 rounded-full text-sm font-semibold transition-colors ${
-                    active ? 'text-white' : dark ? 'text-cream/75 hover:text-cream' : 'text-muted hover:text-ink'
+                  className={`group/nav relative flex items-center gap-2 h-10 font-display text-sm font-medium uppercase tracking-[0.14em] transition-colors ${
+                    active ? (dark ? 'text-white' : 'text-ink') : dark ? 'text-white/75 hover:text-white' : 'text-muted hover:text-ink'
                   }`}
                 >
-                  {active && (
-                    <motion.span
-                      layoutId="nav-pill"
-                      transition={SPRING}
-                      className="absolute inset-0 rounded-full bg-brand-700"
-                    />
-                  )}
-                  <Icon className="relative w-4 h-4" />
                   <span className="relative">{item.label}</span>
+                  <span
+                    className={`absolute inset-x-0 bottom-1 h-0.5 origin-left bg-accent-500 transition-transform duration-300 ease-[cubic-bezier(0.7,0,0.2,1)] ${
+                      active ? 'scale-x-100' : 'scale-x-0 group-hover/nav:scale-x-100'
+                    }`}
+                  />
                   {item.badge !== undefined && <CountBadge count={item.badge} className="relative" />}
                 </Link>
               );
@@ -120,8 +116,8 @@ export default function Navbar() {
 
           <div className="flex items-center gap-2.5">
             {(!currentUser || currentUser.role === 'student') && (
-              <div className={`hidden sm:flex items-center gap-1.5 h-9 px-3 rounded-full border text-sm font-semibold tabular-nums ${dark ? 'bg-white/[0.07] border-white/15 text-cream' : 'bg-white border-line text-ink'}`}>
-                <Wallet className={`w-4 h-4 ${dark ? 'text-accent-400' : 'text-brand-700'}`} />
+              <div className="hidden sm:flex items-center gap-1.5 h-9 font-display text-sm font-medium tracking-[0.06em] tabular-nums">
+                <Wallet className="w-4 h-4 text-accent-500" />
                 <span>₦{walletBalance.toLocaleString()}</span>
               </div>
             )}
@@ -129,12 +125,12 @@ export default function Navbar() {
             {currentUser ? (
               <div className="flex items-center gap-2.5">
                 <div className="hidden sm:block text-right">
-                  <p className="text-sm font-semibold leading-tight">{currentUser.name}</p>
+                  <p className="font-display text-sm font-medium uppercase tracking-[0.06em] leading-tight">{currentUser.name}</p>
                   <p className="text-xs opacity-60 capitalize">{currentUser.role}</p>
                 </div>
                 <button
                   onClick={handleLogout}
-                  className={`flex items-center gap-1.5 h-9 px-3.5 rounded-full border text-sm font-semibold transition-colors active:scale-[0.97] cursor-pointer ${dark ? 'border-white/20 hover:border-white/40' : 'border-ink/15 hover:border-ink/30'}`}
+                  className={`flex items-center gap-1.5 h-10 px-4 rounded-md border-2 font-display text-xs font-medium uppercase tracking-[0.14em] transition-colors duration-300 active:scale-[0.97] cursor-pointer ${dark ? 'border-white/70 hover:bg-white hover:text-ink' : 'border-ink hover:bg-ink hover:text-white'}`}
                   title="Sign out"
                 >
                   <LogOut className="w-4 h-4" />
@@ -144,7 +140,7 @@ export default function Navbar() {
             ) : (
               <Link
                 to="/login"
-                className={`flex items-center gap-1.5 h-9 px-4 rounded-full text-sm font-semibold transition-[transform,background-color] duration-300 hover:-translate-y-px active:scale-[0.97] ${dark ? 'bg-cream text-ink hover:bg-white' : 'bg-brand-700 text-white hover:bg-brand-800'}`}
+                className={`flex items-center gap-1.5 h-10 px-5 rounded-md border-2 font-display text-xs font-medium uppercase tracking-[0.14em] transition-colors duration-300 active:scale-[0.97] ${dark ? 'border-white/80 text-white hover:bg-white hover:text-ink' : 'border-ink text-ink hover:bg-ink hover:text-white'}`}
               >
                 <LogIn className="w-4 h-4" />
                 <span>Sign In</span>
@@ -157,7 +153,7 @@ export default function Navbar() {
       {/* Mobile bottom navigation (< 768px) for student, vendor, rider */}
       {(!currentUser || currentUser.role !== 'admin') && (
         <nav
-          className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-line flex items-center justify-around h-16 px-2 pb-[env(safe-area-inset-bottom)]"
+          className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white shadow-[0_-6px_24px_-12px_rgb(0_0_0/0.25)] flex items-center justify-around h-16 px-2 pb-[env(safe-area-inset-bottom)]"
           aria-label="Main"
         >
           {navItems.map((item) => {
@@ -168,15 +164,15 @@ export default function Navbar() {
                 key={item.to}
                 to={item.to}
                 aria-current={active ? 'page' : undefined}
-                className={`relative flex flex-col items-center justify-center gap-1 min-w-20 h-12 rounded-xl text-xs font-semibold transition-colors ${
-                  active ? 'text-brand-700' : 'text-muted'
+                className={`relative flex flex-col items-center justify-center gap-1 min-w-20 h-12 font-display text-[11px] font-medium uppercase tracking-[0.12em] transition-colors ${
+                  active ? 'text-accent-600' : 'text-muted'
                 }`}
               >
                 {active && (
                   <motion.span
                     layoutId="tab-dot"
                     transition={SPRING}
-                    className="absolute -top-2 h-1 w-8 rounded-full bg-brand-700"
+                    className="absolute -top-2 h-1 w-8 rounded-full bg-accent-500"
                   />
                 )}
                 <span className="relative">

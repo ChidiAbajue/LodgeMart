@@ -2,9 +2,8 @@
 
 /* LodgeMart design tokens — colours sampled from the brand logo (green #144E2F, orange #F28724). */
 @theme {
-  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-display: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-serif: 'Instrument Serif', ui-serif, Georgia, serif;
+  --font-sans: 'Source Sans 3 Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Oswald Variable', 'Arial Narrow', ui-sans-serif, sans-serif;
   --color-night: #07130d;
   --color-night-2: #0c1f15;
 
@@ -32,9 +31,9 @@
   --color-ink: #13201a;
   --color-muted: #5b6b61;
   --color-line: #e6e9e3;
-  --color-canvas: #fbf4e6;
+  --color-canvas: #f7f5f0;
   --color-cream: #fbf4e6;
-  --color-tile: #f3ecdc;
+  --color-tile: #efece5;
   --color-mint: #e3f0e7;
   --color-peach: #fde7d3;
 
@@ -67,19 +66,33 @@
   }
 }
 
-@keyframes lm-marquee {
-  to {
-    transform: translateX(-50%);
-  }
+/* Savings slider: ink track, white thumb */
+.lm-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(19 32 26 / 0.25);
 }
-.lm-marquee {
-  animation: lm-marquee 38s linear infinite;
+.lm-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #fff;
+  border: 3px solid var(--color-ink);
+  transition: transform 0.2s;
+}
+.lm-range::-webkit-slider-thumb:hover { transform: scale(1.15); }
+.lm-range::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #fff;
+  border: 3px solid var(--color-ink);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lm-marquee {
-    animation: none !important;
-  }
   *, *::before, *::after {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
