@@ -1,25 +1,78 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  KeyRound,
-  Users,
-  Star,
-  MapPin,
-  CheckCircle2,
-  ShoppingBag,
-  XCircle,
-} from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { KeyRound, Users, Star, MapPin, CheckCircle2, ShoppingBasket, XCircle, Check } from 'lucide-react';
 import { useLodgeMart } from '../context/LodgeMartContext';
+import { getProductImage } from '../data/productImages';
 import DelegatePinModal from '../components/DelegatePinModal';
 import ItemRatingModal from '../components/ItemRatingModal';
+import PageHeader from '../components/ui/PageHeader';
+import Button from '../components/ui/Button';
+import Reveal from '../components/ui/Reveal';
 
-const STATUS_STEPS = [
-  'Order Placed',
-  'Packed at Market',
-  'Rider In Transit',
-  'Ready at Hub',
-  'Collected',
-];
+const STATUS_STEPS = ['Order Placed', 'Packed at Market', 'Rider In Transit', 'Ready at Hub', 'Collected'];
+const OUT = [0.16, 1, 0.3, 1];
+
+function Timeline({ status }) {
+  const current = STATUS_STEPS.indexOf(status);
+  const pct = current <= 0 ? 0 : (current / (STATUS_STEPS.length - 1)) * 100;
+  return (
+    <div className="relative">
+      <div className="absolute left-[10%] right-[10%] top-4 h-1 rounded-full bg-ink/10" />
+      <motion.div
+        className="absolute left-[10%] top-4 h-1 rounded-full bg-brand-700"
+        initial={{ width: 0 }}
+        whileInView={{ width: `${pct * 0.8}%` }}
+        viewport={{ once: true }}
+        transition={{ duration: 1, ease: OUT, delay: 0.2 }}
+      />
+      <ol className="relative grid grid-cols-5">
+        {STATUS_STEPS.map((step, idx) => {
+          const done = idx < current || status === 'Collected';
+          const now = idx === current && status !== 'Collected';
+          return (
+            <li key={step} className="flex flex-col items-center text-center">
+              <span
+                className={`relative flex h-9 w-9 items-center justify-center rounded-full border-2 font-display text-sm font-medium ${
+                  done
+                    ? 'border-brand-700 bg-brand-700 text-white'
+                    : now
+                    ? 'border-accent-500 bg-accent-500 text-ink'
+                    : 'border-ink/15 bg-white text-muted'
+                }`}
+              >
+                {now && <span className="absolute inset-0 animate-ping rounded-full bg-accent-500/40" />}
+                {done ? <Check className="h-4 w-4" /> : idx + 1}
+              </span>
+              <span
+                className={`mt-2 font-display text-[10px] sm:text-xs font-medium uppercase leading-tight tracking-[0.06em] ${
+                  done || now ? 'text-ink' : 'text-muted'
+                }`}
+              >
+                {step}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+function DarkAction({ onClick, icon: Icon, children, tone = 'light' }) {
+  const tones = {
+    light: 'border-white/70 text-white hover:bg-white hover:text-ink',
+    danger: 'border-red-300/70 text-red-200 hover:bg-red-500 hover:border-red-500 hover:text-white',
+    accent: 'border-accent-500 bg-accent-500 text-ink hover:bg-white hover:border-white',
+  };
+  return (
+    <button
+      onClick={onClick}
+      className={`flex h-11 items-center gap-2 rounded-md border-2 px-4 font-display text-xs font-medium uppercase tracking-[0.14em] transition-colors duration-300 active:scale-[0.97] cursor-pointer ${tones[tone]}`}
+    >
+      <Icon className="h-4 w-4" /> {children}
+    </button>
+  );
+}
 
 export default function StudentOrdersPage() {
   const { currentUser, orders, orderItems, cancelOrder } = useLodgeMart();
@@ -27,9 +80,7 @@ export default function StudentOrdersPage() {
   const [ratingOrder, setRatingOrder] = useState(null);
   const [cancelNotice, setCancelNotice] = useState('');
 
-  const myOrders = orders.filter(
-    (o) => !currentUser?.email || o.studentEmail === currentUser.email
-  );
+  const myOrders = orders.filter((o) => !currentUser?.email || o.studentEmail === currentUser.email);
 
   const handleCancel = (orderId) => {
     const res = cancelOrder(orderId);
@@ -41,211 +92,161 @@ export default function StudentOrdersPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 md:pb-12">
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">My Batch Orders</h1>
-            <p className="text-xs text-slate-500">
-              Live status, 4-digit junction PINs, and roommate delegation
-            </p>
-          </div>
-          <Link
-            to="/shop"
-            className="px-3.5 py-2 rounded-xl bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5"
-          >
-            <ShoppingBag className="w-3.5 h-3.5" />
-            <span>New Order</span>
-          </Link>
+    <div className="min-h-screen bg-canvas pb-24 md:pb-16">
+      <PageHeader kicker="Live status · junction PINs" title="My batch orders">
+        <div className="mt-5 flex flex-wrap items-center gap-4">
+          <p className="max-w-lg text-white/75">Live status, 4-digit junction PINs, and roommate delegation</p>
+          <Button to="/shop" variant="outlineLight" size="sm">
+            <ShoppingBasket className="h-4 w-4" /> New order
+          </Button>
         </div>
+      </PageHeader>
 
-        {cancelNotice && (
-          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-semibold text-amber-800">
-            {cancelNotice}
-          </div>
-        )}
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-10 space-y-6">
+        <AnimatePresence>
+          {cancelNotice && (
+            <motion.p
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-md border-l-4 border-accent-500 bg-white px-5 py-4 text-sm font-semibold text-ink shadow-[0_6px_20px_-12px_rgb(0_0_0/0.3)]"
+            >
+              {cancelNotice}
+            </motion.p>
+          )}
+        </AnimatePresence>
 
         {myOrders.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center space-y-2">
-            <p className="text-sm font-semibold text-slate-700">No orders yet</p>
-            <p className="text-xs text-slate-500">Place your first batch order in the shop.</p>
+          <div className="rounded-lg bg-white p-12 text-center">
+            <ShoppingBasket className="mx-auto h-12 w-12 text-ink/20" />
+            <p className="mt-4 font-display text-xl uppercase text-ink">No orders yet</p>
+            <p className="mt-1 text-muted">Place your first batch order in the shop.</p>
           </div>
         ) : (
-          <div className="space-y-5">
-            {myOrders.map((order) => {
-              const items = orderItems.filter((i) => i.orderId === order.id);
-              const currentStepIdx = STATUS_STEPS.indexOf(order.status);
-
-              return (
-                <div
-                  key={order.id}
-                  className="bg-white rounded-2xl border border-slate-200 p-5 space-y-5"
-                >
-                  {/* Header */}
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-slate-900 text-base">
-                          Order {order.id}
-                        </span>
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {order.status}
-                        </span>
-                        {order.delegateInfo?.active && (
-                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                            Delegated to {order.delegateInfo.name}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5 text-emerald-700" />
-                        <span>
-                          {order.campusZone} • {order.pickupHub} • {order.batchSlot}
-                        </span>
-                      </p>
-                    </div>
-
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-slate-900">
-                        ₦{order.totalAmount.toLocaleString()}
-                      </p>
-                      <p className="text-[11px] text-slate-400">{order.paymentMethod}</p>
-                    </div>
-                  </div>
-
-                  {/* Step-by-Step Timeline */}
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {STATUS_STEPS.map((step, idx) => {
-                      const completed = idx <= currentStepIdx;
-                      return (
-                        <div key={step} className="space-y-1.5">
-                          <div
-                            className={`h-1.5 rounded-full ${
-                              completed ? 'bg-emerald-700' : 'bg-slate-200'
-                            }`}
-                          />
-                          <p
-                            className={`text-[10px] leading-tight font-medium ${
-                              completed ? 'text-emerald-800' : 'text-slate-400'
-                            }`}
-                          >
-                            {step}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* High-Contrast 4-Digit PIN Box + Actions */}
-                  <div className="p-4 rounded-xl bg-slate-900 text-white flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-emerald-700 flex items-center justify-center">
-                        <KeyRound className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <p className="text-[11px] uppercase tracking-wider text-slate-400">
-                          {order.delegateInfo?.active
-                            ? `Delegate PIN (${order.delegateInfo.name})`
-                            : 'Junction Pickup PIN'}
-                        </p>
-                        <p className="text-2xl font-extrabold tracking-[0.25em]">
-                          {order.pickupPin}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {(order.status === 'Order Placed' ||
-                        order.status === 'Packed at Market') && (
-                        <>
-                          <button
-                            onClick={() => setDelegateOrder(order)}
-                            className="px-3.5 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <Users className="w-3.5 h-3.5" />
-                            <span>Delegate Pickup</span>
-                          </button>
-                          <button
-                            onClick={() => handleCancel(order.id)}
-                            className="px-3.5 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <XCircle className="w-3.5 h-3.5" />
-                            <span>Cancel (₦200 fee)</span>
-                          </button>
-                        </>
-                      )}
-
-                      {(order.status === 'Rider In Transit' ||
-                        order.status === 'Ready at Hub') && (
-                        <button
-                          onClick={() => setDelegateOrder(order)}
-                          className="px-3.5 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Users className="w-3.5 h-3.5" />
-                          <span>Delegate Pickup</span>
-                        </button>
-                      )}
-
-                      {order.status === 'Collected' && !order.rated && (
-                        <button
-                          onClick={() => setRatingOrder(order)}
-                          className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Star className="w-3.5 h-3.5" />
-                          <span>Rate Order</span>
-                        </button>
-                      )}
-
-                      {order.rated && (
-                        <span className="px-3 py-1.5 rounded-lg bg-emerald-800 text-emerald-100 text-xs font-semibold flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Rated</span>
+          myOrders.map((order) => {
+            const items = orderItems.filter((i) => i.orderId === order.id);
+            const open = order.status === 'Order Placed' || order.status === 'Packed at Market';
+            const moving = order.status === 'Rider In Transit' || order.status === 'Ready at Hub';
+            const cancelled = order.status === 'Cancelled';
+            return (
+              <Reveal key={order.id} as="article" className="overflow-hidden rounded-lg bg-white shadow-[0_10px_30px_-18px_rgb(0_0_0/0.35)]">
+                {/* Header */}
+                <div className="flex flex-wrap items-start justify-between gap-4 px-6 pt-6">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <h2 className="font-display text-3xl font-semibold uppercase text-ink">Order {order.id}</h2>
+                      <span
+                        className={`rounded px-2.5 py-1 font-display text-[11px] font-medium uppercase tracking-[0.12em] ${
+                          cancelled ? 'bg-red-100 text-red-700' : 'bg-accent-500 text-ink'
+                        }`}
+                      >
+                        {order.status}
+                      </span>
+                      {order.delegateInfo?.active && (
+                        <span className="rounded bg-brand-700 px-2.5 py-1 font-display text-[11px] font-medium uppercase tracking-[0.12em] text-white">
+                          Delegated to {order.delegateInfo.name}
                         </span>
                       )}
                     </div>
-                  </div>
-
-                  {/* Items List */}
-                  <div className="border-t border-slate-100 pt-3 space-y-1.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Basket Items ({items.length})
+                    <p className="mt-2 flex items-start gap-1.5 text-sm text-muted">
+                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-accent-600" />
+                      {order.campusZone} · {order.pickupHub} · {order.batchSlot}
                     </p>
-                    <div className="grid sm:grid-cols-2 gap-2">
-                      {items.map((item) => (
-                        <div
-                          key={item.itemId}
-                          className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between text-xs"
-                        >
-                          <span className="font-medium text-slate-800">
-                            {item.qty}× {item.productName}
-                          </span>
-                          <span className="font-semibold text-slate-900">
-                            ₦{(item.studentPrice * item.qty).toLocaleString()}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-display text-3xl font-semibold text-ink tabular-nums">₦{order.totalAmount.toLocaleString()}</p>
+                    <p className="text-sm text-muted">{order.paymentMethod}</p>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+
+                {/* Timeline */}
+                {!cancelled && (
+                  <div className="px-6 pt-7">
+                    <Timeline status={order.status} />
+                  </div>
+                )}
+
+                {/* PIN band */}
+                <div className="mt-7 flex flex-wrap items-center justify-between gap-5 bg-ink px-6 py-5 text-white">
+                  <div className="flex items-center gap-4">
+                    <KeyRound className="h-6 w-6 text-accent-400" />
+                    <div>
+                      <p className="font-display text-[11px] font-medium uppercase tracking-[0.2em] text-white/50">
+                        {order.delegateInfo?.active ? `Delegate PIN (${order.delegateInfo.name})` : 'Junction pickup PIN'}
+                      </p>
+                      <div className="mt-1.5 flex gap-1.5" aria-label={`PIN ${order.pickupPin}`}>
+                        {order.pickupPin.split('').map((d, i) => (
+                          <motion.span
+                            key={`${order.pickupPin}-${i}`}
+                            aria-hidden="true"
+                            className="flex h-12 w-10 items-center justify-center rounded bg-white/10 font-display text-3xl font-semibold"
+                            initial={{ rotateX: -90, opacity: 0 }}
+                            whileInView={{ rotateX: 0, opacity: 1 }}
+                            viewport={{ once: true }}
+                            transition={{ duration: 0.5, ease: OUT, delay: 0.3 + i * 0.08 }}
+                            style={{ transformPerspective: 400 }}
+                          >
+                            {d}
+                          </motion.span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {open && (
+                      <>
+                        <DarkAction onClick={() => setDelegateOrder(order)} icon={Users}>Delegate pickup</DarkAction>
+                        <DarkAction onClick={() => handleCancel(order.id)} icon={XCircle} tone="danger">Cancel (₦200 fee)</DarkAction>
+                      </>
+                    )}
+                    {moving && <DarkAction onClick={() => setDelegateOrder(order)} icon={Users}>Delegate pickup</DarkAction>}
+                    {order.status === 'Collected' && !order.rated && (
+                      <DarkAction onClick={() => setRatingOrder(order)} icon={Star} tone="accent">Rate order</DarkAction>
+                    )}
+                    {order.rated && (
+                      <span className="flex h-11 items-center gap-2 rounded-md bg-brand-700 px-4 font-display text-xs uppercase tracking-[0.14em]">
+                        <CheckCircle2 className="h-4 w-4" /> Rated
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Items */}
+                <div className="px-6 py-6">
+                  <p className="font-display text-xs font-medium uppercase tracking-[0.2em] text-accent-700">
+                    Basket items ({items.length})
+                  </p>
+                  <ul className="mt-3 grid gap-2.5 sm:grid-cols-2">
+                    {items.map((item) => (
+                      <li key={item.itemId} className="flex items-center gap-3 rounded-md bg-canvas p-2.5">
+                        <span className="h-12 w-12 shrink-0 rounded bg-tile p-1">
+                          {getProductImage(item.productId) && (
+                            <img src={getProductImage(item.productId)} alt="" className="h-full w-full object-contain" />
+                          )}
+                        </span>
+                        <span className="flex-1 text-sm font-semibold text-ink">
+                          {item.qty}× {item.productName}
+                        </span>
+                        <span className="pr-1.5 font-display text-base font-medium text-ink tabular-nums">
+                          ₦{(item.studentPrice * item.qty).toLocaleString()}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </Reveal>
+            );
+          })
         )}
       </div>
 
-      <DelegatePinModal
-        isOpen={Boolean(delegateOrder)}
-        onClose={() => setDelegateOrder(null)}
-        order={delegateOrder}
-      />
+      <DelegatePinModal isOpen={Boolean(delegateOrder)} onClose={() => setDelegateOrder(null)} order={delegateOrder} />
 
       <ItemRatingModal
         isOpen={Boolean(ratingOrder)}
         onClose={() => setRatingOrder(null)}
         order={ratingOrder}
-        items={
-          ratingOrder ? orderItems.filter((i) => i.orderId === ratingOrder.id) : []
-        }
+        items={ratingOrder ? orderItems.filter((i) => i.orderId === ratingOrder.id) : []}
       />
     </div>
   );

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { X, Users, MessageCircle, KeyRound } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Users, MessageCircle } from 'lucide-react';
 import { useLodgeMart } from '../context/LodgeMartContext';
+import Modal, { TextField, ActionButton } from './ui/Modal';
 
 export default function DelegatePinModal({ isOpen, onClose, order }) {
   const { delegateOrderPin } = useLodgeMart();
@@ -24,95 +26,40 @@ export default function DelegatePinModal({ isOpen, onClose, order }) {
   const waUrl = `https://wa.me/${cleanPhone}?text=${waText}`;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md rounded-2xl border border-slate-200 overflow-hidden shadow-xl">
-        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-emerald-700" />
-            <h3 className="font-bold text-slate-900 text-base">Delegate Pickup PIN</h3>
+    <Modal open onClose={onClose} title="Delegate pickup PIN" subtitle={`Order ${order.id} · ${order.pickupHub}`} icon={Users}>
+      {!generatedPin ? (
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <p className="text-[0.95rem] leading-relaxed text-muted">
+            Stuck in a lecture? Assign a roommate to collect order{' '}
+            <span className="font-semibold text-ink">{order.id}</span>. Your current PIN will be invalidated immediately.
+          </p>
+          <TextField label="Roommate full name" type="text" required placeholder="e.g. Emeka" value={name} onChange={(e) => setName(e.target.value)} />
+          <TextField label="WhatsApp phone number" type="tel" required placeholder="e.g. 08012345678" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <ActionButton type="submit">Rotate PIN &amp; delegate to roommate</ActionButton>
+        </form>
+      ) : (
+        <div className="space-y-6 text-center">
+          <p className="font-display text-xs font-medium uppercase tracking-[0.25em] text-accent-700">Delegated to {name}</p>
+          <div className="flex justify-center gap-2.5">
+            {generatedPin.split('').map((d, i) => (
+              <motion.span
+                key={`${generatedPin}-${i}`}
+                className="flex h-20 w-16 items-center justify-center rounded-md bg-ink font-display text-5xl font-semibold text-white"
+                initial={{ rotateX: -90, opacity: 0 }}
+                animate={{ rotateX: 0, opacity: 1 }}
+                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: i * 0.1 }}
+                style={{ transformPerspective: 400 }}
+              >
+                {d}
+              </motion.span>
+            ))}
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <p className="text-sm text-muted">Previous PIN has been invalidated.</p>
+          <ActionButton as="a" href={waUrl} target="_blank" rel="noopener noreferrer" className="!bg-[#25D366]">
+            <MessageCircle className="h-4 w-4" /> Share PIN via WhatsApp
+          </ActionButton>
         </div>
-
-        <div className="p-5">
-          {!generatedPin ? (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <p className="text-xs text-slate-600">
-                Stuck in a lecture? Assign a roommate to collect order{' '}
-                <span className="font-semibold text-slate-900">{order.id}</span>. Your current
-                PIN will be invalidated immediately.
-              </p>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Roommate Full Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Emeka"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-emerald-700"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  WhatsApp Phone Number
-                </label>
-                <input
-                  type="tel"
-                  required
-                  placeholder="e.g. 08012345678"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-emerald-700"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-sm cursor-pointer"
-              >
-                Rotate PIN &amp; Delegate to Roommate
-              </button>
-            </form>
-          ) : (
-            <div className="space-y-4 text-center">
-              <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center mx-auto">
-                <KeyRound className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
-                  Delegated to {name}
-                </p>
-                <p className="text-3xl font-extrabold tracking-[0.25em] text-slate-900 mt-2">
-                  {generatedPin}
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Previous PIN has been invalidated.
-                </p>
-              </div>
-
-              <a
-                href={waUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-3 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-sm flex items-center justify-center gap-2"
-              >
-                <MessageCircle className="w-4 h-4" />
-                <span>Share PIN via WhatsApp</span>
-              </a>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+      )}
+    </Modal>
   );
 }
