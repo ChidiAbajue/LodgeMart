@@ -1,5 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  motion,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+  useMotionValue,
+  useSpring,
+} from 'motion/react';
 import {
   ArrowRight,
   ShieldCheck,
@@ -20,7 +27,7 @@ import SectionHeader from '../components/ui/SectionHeader';
 import RollingDigits from '../components/ui/RollingDigits';
 import Ticker from '../components/ui/Ticker';
 import Footer from '../components/Footer';
-import { EASE, SPRING_POP } from '../lib/motion';
+import { EASE } from '../lib/motion';
 
 const SAMPLE_ORDER = INITIAL_ORDERS[0];
 const SAMPLE_ITEMS = INITIAL_ORDER_ITEMS.filter((i) => i.orderId === SAMPLE_ORDER.id);
@@ -33,26 +40,43 @@ const TICKER_ITEMS = [
   'Pay with LodgeMart Wallet or Paystack',
 ];
 
+const SMOOTH = [0.16, 1, 0.3, 1];
+
 /* ---------- Hero pieces ---------- */
 
-/** Headline words rise out of a mask, one after another. */
-function Words({ text, start = 0 }) {
+/** Words drift up out of a soft blur, one after another. */
+function Words({ text, start = 0, wordClass = '' }) {
   return text.split(' ').map((word, i) => (
-    <span key={i} className="inline-block overflow-hidden align-bottom pb-[0.06em] -mb-[0.06em] mr-[0.22em] last:mr-0">
-      <motion.span
-        className="inline-block"
-        initial={{ y: '110%' }}
-        animate={{ y: '0%' }}
-        transition={{ duration: 0.62, ease: EASE, delay: start + i * 0.045 }}
-      >
-        {word}
-      </motion.span>
-    </span>
+    <motion.span
+      key={i}
+      className={`inline-block mr-[0.2em] last:mr-0 ${wordClass}`}
+      initial={{ opacity: 0, y: 28, filter: 'blur(14px)' }}
+      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+      transition={{ duration: 1.05, ease: SMOOTH, delay: start + i * 0.07 }}
+    >
+      {word}
+    </motion.span>
   ));
 }
 
-/** A cut-out product that drops in and settles. */
-function Drop({ productId, alt, className, delay, eager }) {
+/** Gentle idle float + pointer-depth parallax around any child. */
+function Floating({ children, className = '', depth = 10, float = 8, period = 6, delay = 0, px, py }) {
+  const reduce = useReducedMotion();
+  const x = useTransform(px, (v) => v * depth);
+  const y = useTransform(py, (v) => v * depth);
+  return (
+    <motion.div className={`absolute ${className}`} style={reduce ? undefined : { x, y }}>
+      <motion.div
+        animate={reduce ? undefined : { y: [0, -float, 0] }}
+        transition={{ duration: period, ease: 'easeInOut', repeat: Infinity, delay }}
+      >
+        {children}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function Product({ productId, alt, delay, eager }) {
   return (
     <motion.img
       src={getProductImage(productId)}
@@ -62,85 +86,107 @@ function Drop({ productId, alt, className, delay, eager }) {
       loading={eager ? 'eager' : 'lazy'}
       fetchPriority={eager ? 'high' : 'auto'}
       decoding="async"
-      className={`absolute select-none pointer-events-none ${className}`}
-      initial={{ y: -48, opacity: 0, scale: 0.9 }}
-      animate={{ y: 0, opacity: 1, scale: 1 }}
-      transition={{ type: 'spring', stiffness: 380, damping: 20, delay }}
+      className="w-full select-none pointer-events-none drop-shadow-[0_30px_40px_rgb(0_0_0/0.45)]"
+      initial={{ opacity: 0, y: 40, scale: 0.92, filter: 'blur(10px)' }}
+      animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+      transition={{ duration: 1.2, ease: SMOOTH, delay }}
     />
   );
 }
 
-function HeroVisual() {
+function HeroStage({ px, py }) {
+  const reduce = useReducedMotion();
   return (
-    <div className="relative mx-auto aspect-square w-full max-w-[560px]">
-      {/* orange disc the basket sits on */}
+    <div className="relative mx-auto aspect-square w-full max-w-[600px]">
+      {/* warm sun the products sit in front of */}
       <motion.div
         aria-hidden="true"
-        className="absolute inset-[6%] rounded-full bg-accent-500 border-2 border-ink"
-        initial={{ scale: 0.6, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 260, damping: 22, delay: 0.15 }}
-      />
-      <Drop productId="sku-rice" alt="" className="w-[30%] right-[6%] top-[8%]" delay={0.45} />
-      <Drop productId="sku-oil" alt="Vegetable oil" className="w-[56%] left-[22%] top-[2%]" delay={0.35} eager />
-      <Drop productId="sku-indomie" alt="Instant noodles" className="w-[40%] left-[2%] top-[40%]" delay={0.55} />
-      <Drop productId="sku-beans" alt="Honey beans" className="w-[38%] right-[2%] top-[46%]" delay={0.65} />
-
-      {/* proof card: the seeded order #4082 */}
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...SPRING_POP, delay: 0.95 }}
-        className="absolute left-0 bottom-[2%] w-[min(300px,88%)] sm:w-[min(300px,70%)] rounded-2xl border-2 border-ink bg-cream p-4 text-ink shadow-[5px_5px_0_0_var(--color-ink)]"
-      >
-        <div className="flex items-center justify-between gap-2">
-          <p className="font-display text-lg font-extrabold whitespace-nowrap">Order {SAMPLE_ORDER.id}</p>
-          <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-brand-700 px-2 py-0.5 text-[11px] font-semibold text-white">
-            <MapPin className="h-3 w-3" /> {SAMPLE_ORDER.pickupHub}
-          </span>
-        </div>
-        <p className="mt-0.5 text-xs text-muted">{SAMPLE_ORDER.batchSlot}</p>
-        <div className="mt-3 flex items-end justify-between border-t-2 border-dashed border-ink/20 pt-3">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">Pickup PIN</p>
-            <p className="font-mono text-xl font-bold tracking-[0.25em]">••{SAMPLE_ORDER.pickupPin.slice(-2)}</p>
-          </div>
-          <p className="font-display text-xl font-extrabold tabular-nums">₦{SAMPLE_ORDER.totalAmount.toLocaleString()}</p>
-        </div>
-      </motion.div>
-
-      {/* stall chip */}
-      <motion.div
+        className="absolute inset-[10%] rounded-full bg-[radial-gradient(circle_at_45%_35%,#fbbf74_0%,#f28724_38%,#b3570c_72%,#5a2c06_100%)] shadow-[0_0_120px_40px_rgb(242_135_36/0.35)]"
         initial={{ opacity: 0, scale: 0.7 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ ...SPRING_POP, delay: 1.1 }}
-        className="absolute right-0 top-0 inline-flex items-center gap-2 rounded-full border-2 border-ink bg-cream py-1.5 pl-1.5 pr-3.5 text-ink shadow-[3px_3px_0_0_var(--color-ink)]"
-      >
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-700 text-white">
-          <Check className="h-4 w-4" />
-        </span>
-        <span className="text-xs font-bold">
-          {SAMPLE_ITEMS.length} items · {SAMPLE_STALLS} Eke Awka stalls
-        </span>
-      </motion.div>
+        animate={reduce ? { opacity: 1, scale: 1 } : { opacity: 1, scale: [1, 1.035, 1] }}
+        transition={
+          reduce
+            ? { duration: 1.2, ease: SMOOTH }
+            : { opacity: { duration: 1.2, ease: SMOOTH }, scale: { duration: 8, ease: 'easeInOut', repeat: Infinity } }
+        }
+      />
+      {/* floor shadow */}
+      <div aria-hidden="true" className="absolute left-[14%] right-[14%] bottom-[9%] h-[8%] rounded-[50%] bg-black/50 blur-2xl" />
+
+      <Floating px={px} py={py} depth={-14} float={7} period={7} className="w-[30%] right-[6%] top-[8%]">
+        <Product productId="sku-rice" alt="" delay={0.55} />
+      </Floating>
+      <Floating px={px} py={py} depth={22} float={10} period={6} className="w-[52%] left-[24%] top-[3%]">
+        <Product productId="sku-oil" alt="Vegetable oil" delay={0.4} eager />
+      </Floating>
+      <Floating px={px} py={py} depth={12} float={6} period={6.5} delay={0.8} className="w-[40%] left-[2%] top-[42%]">
+        <Product productId="sku-indomie" alt="Instant noodles" delay={0.65} />
+      </Floating>
+      <Floating px={px} py={py} depth={-20} float={9} period={7.5} delay={0.4} className="w-[36%] right-[3%] top-[48%]">
+        <Product productId="sku-beans" alt="Honey beans" delay={0.75} />
+      </Floating>
+
+      {/* glass proof card: the seeded order #4082 */}
+      <Floating px={px} py={py} depth={30} float={5} period={5.5} delay={1.2} className="left-0 bottom-[1%] w-[min(300px,88%)] sm:w-[min(300px,68%)]">
+        <motion.div
+          initial={{ opacity: 0, y: 30, filter: 'blur(10px)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          transition={{ duration: 1, ease: SMOOTH, delay: 1.05 }}
+          className="rounded-3xl border border-white/15 bg-white/[0.08] p-4 text-cream backdrop-blur-xl shadow-[0_30px_60px_-20px_rgb(0_0_0/0.6),inset_0_1px_0_rgb(255_255_255/0.12)]"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-base font-semibold tracking-tight whitespace-nowrap">Order {SAMPLE_ORDER.id}</p>
+            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-accent-500/15 px-2 py-0.5 text-[11px] font-medium text-accent-300">
+              <MapPin className="h-3 w-3" /> {SAMPLE_ORDER.pickupHub}
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-cream/55">{SAMPLE_ORDER.batchSlot}</p>
+          <div className="mt-3 flex items-end justify-between border-t border-white/10 pt-3">
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-cream/45">Pickup PIN</p>
+              <p className="font-mono text-lg font-semibold tracking-[0.3em]">••{SAMPLE_ORDER.pickupPin.slice(-2)}</p>
+            </div>
+            <p className="text-xl font-semibold tracking-tight tabular-nums">₦{SAMPLE_ORDER.totalAmount.toLocaleString()}</p>
+          </div>
+        </motion.div>
+      </Floating>
+
+      <Floating px={px} py={py} depth={-26} float={6} period={6} delay={0.2} className="right-0 top-0">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8, filter: 'blur(8px)' }}
+          animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+          transition={{ duration: 0.9, ease: SMOOTH, delay: 1.25 }}
+          className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.08] py-1.5 pl-1.5 pr-3.5 text-cream backdrop-blur-xl"
+        >
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-500 text-ink">
+            <Check className="h-4 w-4" />
+          </span>
+          <span className="text-xs font-medium">
+            {SAMPLE_ITEMS.length} items · {SAMPLE_STALLS} Eke Awka stalls
+          </span>
+        </motion.div>
+      </Floating>
     </div>
   );
 }
 
-/** Countdown as a ticket stub: notched sides, dashed tear line. */
-function CutoffTicket({ mins, secs }) {
+/** Frosted countdown card with a live pulse. */
+function CutoffCard({ mins, secs }) {
   return (
-    <div className="relative mt-8 flex w-full max-w-md items-stretch rounded-2xl border-2 border-ink bg-cream text-ink shadow-[5px_5px_0_0_var(--color-ink)]">
-      <span aria-hidden="true" className="absolute -left-[9px] top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-ink bg-brand-700 [clip-path:inset(0_0_0_50%)]" />
-      <span aria-hidden="true" className="absolute -right-[9px] top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-ink bg-brand-700 [clip-path:inset(0_50%_0_0)]" />
-      <div className="flex-1 px-5 py-3.5">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Next cutoff</p>
-        <p className="font-display text-lg font-extrabold leading-tight">Midday Break</p>
-        <p className="hidden sm:block text-xs text-muted">Dynamo · School Gate · Aroma</p>
+    <div className="mt-10 flex w-full max-w-md items-center justify-between gap-4 rounded-3xl border border-white/10 bg-white/[0.05] px-5 py-4 backdrop-blur-xl shadow-[inset_0_1px_0_rgb(255_255_255/0.08)]">
+      <div className="flex items-center gap-3">
+        <span className="relative flex h-2.5 w-2.5">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-400 opacity-60" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-accent-500" />
+        </span>
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-cream/50">Next cutoff</p>
+          <p className="text-sm text-cream/80">
+            Midday Break<span className="hidden sm:inline text-cream/50"> · Dynamo · School Gate · Aroma</span>
+          </p>
+        </div>
       </div>
-      <div className="flex items-center border-l-2 border-dashed border-ink/30 px-5">
-        <RollingDigits value={`00:${mins}:${secs}`} className="font-display text-2xl sm:text-3xl font-extrabold text-brand-700" />
-      </div>
+      <RollingDigits value={`00:${mins}:${secs}`} className="text-2xl sm:text-3xl font-semibold tracking-tight text-cream" />
     </div>
   );
 }
@@ -171,11 +217,30 @@ export default function LandingPage() {
   const secs = String(secondsLeft % 60).padStart(2, '0');
   const estimatedMonthlySavings = Math.round(monthlySpend * 0.28);
 
+  // Hero: content drifts up and fades as you scroll away; stage sinks slower (depth).
+  const heroRef = useRef(null);
+  const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] });
+  const copyY = useTransform(scrollYProgress, [0, 1], [0, -120]);
+  const copyOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
+  const stageY = useTransform(scrollYProgress, [0, 1], [0, 80]);
+
+  // Pointer parallax for the stage (desktop pointers only).
+  const mx = useMotionValue(0);
+  const my = useMotionValue(0);
+  const px = useSpring(mx, { stiffness: 60, damping: 18, mass: 0.6 });
+  const py = useSpring(my, { stiffness: 60, damping: 18, mass: 0.6 });
+  const onPointerMove = (e) => {
+    if (reduce || e.pointerType !== 'mouse') return;
+    const r = e.currentTarget.getBoundingClientRect();
+    mx.set((e.clientX - r.left) / r.width - 0.5);
+    my.set((e.clientY - r.top) / r.height - 0.5);
+  };
+
   const qtyOf = (id) => cart.find((c) => c.productId === id)?.qty || 0;
   const rise = (delay) => ({
-    initial: { opacity: 0, y: 16 },
-    animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.5, ease: EASE, delay },
+    initial: { opacity: 0, y: 18, filter: 'blur(8px)' },
+    animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
+    transition: { duration: 0.9, ease: SMOOTH, delay },
   });
   const inView = reduce
     ? {}
@@ -189,52 +254,76 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen">
       {/* ================= HERO ================= */}
-      <section className="relative overflow-hidden bg-brand-700 text-cream" aria-labelledby="hero-title">
-        <div className="max-w-7xl mx-auto grid items-center gap-10 px-4 sm:px-6 pt-10 pb-14 sm:pt-14 lg:grid-cols-12 lg:gap-6 lg:min-h-[calc(100svh-4rem-3.5rem)] lg:py-12">
-          <div className="lg:col-span-7">
+      <section
+        ref={heroRef}
+        onPointerMove={onPointerMove}
+        className="relative -mt-16 overflow-hidden rounded-b-[2.5rem] bg-night pt-16 text-cream"
+        aria-labelledby="hero-title"
+      >
+        {/* blended light: deep green from the top-left, warm orange behind the products */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+          <div className="absolute -left-[20%] -top-[30%] h-[90%] w-[70%] rounded-full bg-brand-600/50 blur-[120px]" />
+          <div className="absolute right-[-10%] top-[10%] h-[80%] w-[60%] rounded-full bg-accent-600/25 blur-[140px]" />
+          <div className="absolute bottom-[-30%] left-[20%] h-[60%] w-[60%] rounded-full bg-brand-700/40 blur-[120px]" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgb(7_19_13/0.7)_100%)]" />
+        </div>
+
+        <div className="relative max-w-7xl mx-auto grid items-center gap-8 px-4 sm:px-6 pt-10 pb-20 sm:pt-14 lg:grid-cols-12 lg:gap-4 lg:min-h-[calc(100svh-3.5rem)] lg:py-10">
+          <motion.div className="lg:col-span-7" style={reduce ? undefined : { y: copyY, opacity: copyOpacity }}>
             <motion.p
               {...rise(0)}
-              className="inline-flex items-center gap-2 rounded-full border-2 border-cream/25 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-cream/85"
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-medium text-cream/75 backdrop-blur-md"
             >
-              <span className="h-2 w-2 rounded-full bg-accent-500" />
+              <span className="h-1.5 w-1.5 rounded-full bg-accent-400" />
               UNIZIK Pilot · Ifite, Tempsite &amp; Aroma
             </motion.p>
 
             <h1
               id="hero-title"
-              className="mt-6 font-display font-extrabold text-[2.6rem] leading-[0.94] min-[400px]:text-[2.85rem] sm:text-[4.2rem] lg:text-[4.6rem] xl:text-[5.4rem] tracking-[-0.045em] [&>span]:sm:whitespace-nowrap"
+              className="mt-6 font-display font-semibold text-[2.9rem] leading-[0.98] min-[400px]:text-[3.2rem] sm:text-[4.6rem] lg:text-[5rem] xl:text-[5.8rem] tracking-[-0.055em]"
             >
-              <span className="block"><Words text="Eke Awka prices." start={0.05} /></span>
-              <span className="block"><Words text="Delivered to your" start={0.2} /></span>
-              <span className="block text-accent-500"><Words text="lodge junction." start={0.35} /></span>
+              <span className="block sm:whitespace-nowrap">
+                <Words text="Eke Awka prices." start={0.1} wordClass="bg-gradient-to-b from-cream to-cream/70 bg-clip-text text-transparent" />
+              </span>
+              <span className="block sm:whitespace-nowrap">
+                <Words text="Delivered to your" start={0.3} wordClass="bg-gradient-to-b from-cream to-cream/70 bg-clip-text text-transparent" />
+              </span>
+              <span className="block sm:whitespace-nowrap font-serif italic font-normal tracking-[-0.02em] text-[1.12em] leading-[0.95]">
+                <Words
+                  text="lodge junction."
+                  start={0.5}
+                  wordClass="bg-gradient-to-br from-accent-300 via-accent-500 to-accent-600 bg-clip-text text-transparent pr-[0.06em]"
+                />
+              </span>
             </h1>
 
-            <motion.p {...rise(0.5)} className="mt-6 max-w-lg text-base sm:text-lg leading-relaxed text-cream/80">
+            <motion.p {...rise(0.75)} className="mt-6 max-w-lg text-base sm:text-lg leading-relaxed text-cream/65">
               Skip the market commute and the 25%–35% campus kiosk markup. Join a batch run timed to
               your lecture breaks for a flat ₦350.
             </motion.p>
 
-            <motion.div {...rise(0.6)} className="mt-8 grid grid-cols-2 gap-3 sm:flex sm:gap-4">
+            <motion.div {...rise(0.9)} className="mt-8 grid grid-cols-2 gap-3 sm:flex sm:gap-3">
               <Button to="/shop" size="lg" variant="accent" className="px-4 sm:px-7">
-                Shop this batch <ArrowRight className="hidden min-[400px]:block w-4 h-4" />
+                Shop this batch
+                <ArrowRight className="hidden min-[400px]:block w-4 h-4 transition-transform duration-300 group-hover/btn:translate-x-1" />
               </Button>
               <Button to="/login" size="lg" variant="onDark" className="px-4 sm:px-7">
                 Portal sign in
               </Button>
             </motion.div>
 
-            <motion.div {...rise(0.7)}>
-              <CutoffTicket mins={mins} secs={secs} />
+            <motion.div {...rise(1.05)}>
+              <CutoffCard mins={mins} secs={secs} />
             </motion.div>
-          </div>
+          </motion.div>
 
-          <div className="lg:col-span-5">
-            <HeroVisual />
-          </div>
+          <motion.div className="lg:col-span-5" style={reduce ? undefined : { y: stageY }}>
+            <HeroStage px={px} py={py} />
+          </motion.div>
         </div>
-      </section>
 
-      <Ticker items={TICKER_ITEMS} label="Hubs, batch times and fees" />
+        <Ticker items={TICKER_ITEMS} label="Hubs, batch times and fees" />
+      </section>
 
       {/* ================= HOW IT WORKS ================= */}
       <section id="how-it-works" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24" aria-labelledby="how-title">

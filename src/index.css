@@ -2,8 +2,11 @@
 
 /* LodgeMart design tokens — colours sampled from the brand logo (green #144E2F, orange #F28724). */
 @theme {
-  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-display: 'Bricolage Grotesque', 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Instrument Serif', ui-serif, Georgia, serif;
+  --color-night: #07130d;
+  --color-night-2: #0c1f15;
 
   --color-brand-50: #eef5f0;
   --color-brand-100: #d5e8db;

@@ -4,7 +4,7 @@ import { Pause, Play } from 'lucide-react';
 
 function Star() {
   return (
-    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-accent-500" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0 text-accent-400/80" aria-hidden="true">
       <path fill="currentColor" d="M12 0l2.6 9.4L24 12l-9.4 2.6L12 24l-2.6-9.4L0 12l9.4-2.6z" />
     </svg>
   );
@@ -31,11 +31,11 @@ export default function Ticker({ items, label = 'LodgeMart facts' }) {
   return (
     <section
       aria-label={label}
-      className="relative overflow-hidden border-y-2 border-ink bg-ink text-cream"
+      className="relative overflow-hidden border-t border-white/10 text-cream/60"
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div className="flex h-14 items-center text-sm font-semibold uppercase tracking-[0.08em]">
+      <div className="flex h-16 items-center text-sm font-medium tracking-[0.02em] [mask-image:linear-gradient(90deg,transparent,black_8%,black_88%,transparent)]">
         <div
           className={`flex w-max ${reduce ? '' : 'lm-marquee'}`}
           style={{ animationPlayState: running ? 'running' : 'paused' }}
@@ -45,11 +45,11 @@ export default function Ticker({ items, label = 'LodgeMart facts' }) {
         </div>
       </div>
       {!reduce && (
-        <div className="absolute inset-y-0 right-0 flex items-center bg-gradient-to-l from-ink from-60% to-transparent pl-10 pr-2">
+        <div className="absolute inset-y-0 right-0 flex items-center pl-10 pr-3">
         <button
           type="button"
           onClick={() => setPaused((p) => !p)}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-ink text-cream ring-1 ring-cream/25 transition-colors hover:bg-brand-800 cursor-pointer"
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-cream backdrop-blur-md transition-colors hover:bg-white/[0.12] cursor-pointer"
           aria-label={paused ? 'Play ticker' : 'Pause ticker'}
         >
           {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}

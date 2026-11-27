@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { MotionConfig } from 'motion/react';
 import { LodgeMartProvider, useLodgeMart } from './context/LodgeMartContext';
 import Navbar from './components/Navbar';
+import SmoothScroll from './components/SmoothScroll';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import StorefrontPage from './pages/StorefrontPage';
@@ -36,6 +37,7 @@ export default function App() {
     <LodgeMartProvider>
       <BrowserRouter>
         <div className="min-h-screen bg-canvas text-ink">
+          <SmoothScroll />
           <Navbar />
           <Routes>
             <Route path="/" element={<LandingPage />} />
