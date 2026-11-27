@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, X, Check, AlertCircle } from 'lucide-react';
+import { Camera, Check, AlertCircle } from 'lucide-react';
+import Modal, { ActionButton } from './ui/Modal';
 
 export default function CameraCaptureModal({ isOpen, onClose, vendorName, onCapture }) {
   const videoRef = useRef(null);
@@ -64,14 +65,14 @@ export default function CameraCaptureModal({ isOpen, onClose, vendorName, onCapt
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
     } else {
       // Clean fallback frame for desktop/laptop testing without a rear camera
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = '#13201a';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#047857';
+      ctx.fillStyle = '#f28724';
       ctx.fillRect(24, 24, canvas.width - 48, 72);
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 22px sans-serif';
       ctx.fillText(`LodgeMart Stall Proof — ${vendorName}`, 42, 68);
-      ctx.fillStyle = '#cbd5e1';
+      ctx.fillStyle = '#e6e9e3';
       ctx.font = '16px sans-serif';
       ctx.fillText(`Captured: ${new Date().toLocaleTimeString()}`, 42, 140);
       ctx.fillText('Eke Awka Market • Verified Live Frame', 42, 170);
@@ -88,73 +89,51 @@ export default function CameraCaptureModal({ isOpen, onClose, vendorName, onCapt
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md rounded-2xl border border-slate-200 overflow-hidden shadow-xl">
-        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-          <div>
-            <h3 className="font-bold text-slate-900 text-base">Capture Stall Proof</h3>
-            <p className="text-xs text-slate-500">
-              Live camera required for {vendorName} (gallery uploads blocked)
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <Modal
+      open
+      onClose={onClose}
+      icon={Camera}
+      title="Capture stall proof"
+      subtitle={`Live camera required for ${vendorName} (gallery uploads blocked)`}
+    >
+      <div className="space-y-4">
+        <div className="relative flex aspect-4/3 items-center justify-center overflow-hidden rounded-md bg-ink">
+          {previewUrl ? (
+            <img src={previewUrl} alt="Stall proof" className="h-full w-full object-cover" />
+          ) : cameraError ? (
+            <div className="space-y-3 p-6 text-center text-white/70">
+              <AlertCircle className="mx-auto h-9 w-9 text-accent-400" />
+              <p className="text-sm">{cameraError}</p>
+            </div>
+          ) : (
+            <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+          )}
+          {/* viewfinder corners */}
+          {!previewUrl &&
+            ['left-4 top-4 border-l-4 border-t-4', 'right-4 top-4 border-r-4 border-t-4', 'left-4 bottom-4 border-l-4 border-b-4', 'right-4 bottom-4 border-r-4 border-b-4'].map((c) => (
+              <span key={c} aria-hidden="true" className={`pointer-events-none absolute h-8 w-8 border-accent-500 ${c}`} />
+            ))}
+          <canvas ref={canvasRef} className="hidden" />
         </div>
 
-        <div className="p-4 space-y-4">
-          <div className="relative aspect-4/3 bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center">
-            {previewUrl ? (
-              <img src={previewUrl} alt="Stall proof" className="w-full h-full object-cover" />
-            ) : cameraError ? (
-              <div className="p-6 text-center text-slate-300 space-y-2">
-                <AlertCircle className="w-8 h-8 text-amber-500 mx-auto" />
-                <p className="text-xs">{cameraError}</p>
-              </div>
-            ) : (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-              />
-            )}
-            <canvas ref={canvasRef} className="hidden" />
+        {!previewUrl ? (
+          <ActionButton onClick={handleSnap}>
+            <Camera className="h-4 w-4" /> Take live photo
+          </ActionButton>
+        ) : (
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              onClick={() => setPreviewUrl('')}
+              className="h-14 rounded-md border-2 border-ink font-display text-xs font-medium uppercase tracking-[0.14em] text-ink transition-colors duration-300 hover:bg-ink hover:text-white cursor-pointer"
+            >
+              Retake
+            </button>
+            <ActionButton onClick={handleConfirm}>
+              <Check className="h-4 w-4" /> Use photo
+            </ActionButton>
           </div>
-
-          <div className="flex gap-2.5">
-            {!previewUrl ? (
-              <button
-                onClick={handleSnap}
-                className="w-full py-3 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-sm flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Camera className="w-4 h-4" />
-                <span>Take Live Photo</span>
-              </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => setPreviewUrl('')}
-                  className="flex-1 py-3 px-4 rounded-xl border border-slate-200 text-slate-700 font-semibold text-sm hover:bg-slate-50 cursor-pointer"
-                >
-                  Retake
-                </button>
-                <button
-                  onClick={handleConfirm}
-                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-sm flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Use Photo</span>
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 }

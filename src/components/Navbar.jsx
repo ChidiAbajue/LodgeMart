@@ -35,7 +35,7 @@ function CountBadge({ count, className = '' }) {
 }
 
 // Pages that open with a dark photo header, so the bar starts transparent over it.
-const PHOTO_HEADER_ROUTES = ['/', '/shop', '/orders'];
+const PHOTO_HEADER_ROUTES = ['/', '/shop', '/orders', '/vendor', '/rider', '/admin'];
 
 export default function Navbar() {
   const { currentUser, logout, walletBalance, cart } = useLodgeMart();
