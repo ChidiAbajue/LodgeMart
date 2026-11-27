@@ -222,6 +222,15 @@ export async function cancelOrder(student, id) {
       throw new AppError(409, 'CANNOT_CANCEL', 'Order cannot be cancelled once the rider has picked it up');
     }
 
+    // Partially collected (one stall picked up, another not yet): the vendor has
+    // already been paid for those items, so the order can't be cancelled.
+    // Our status update above holds the order row lock, so a stall pickup
+    // running right now has either committed already (seen here) or waits.
+    const collected = await tx.orderItem.count({ where: { orderId: id, riderPickedUp: true } });
+    if (collected > 0) {
+      throw new AppError(409, 'CANNOT_CANCEL', 'Order cannot be cancelled once the rider has picked it up');
+    }
+
     for (const item of order.items) {
       await tx.vendorInventory.updateMany({
         where: { vendorId: item.vendorId, productId: item.productId },

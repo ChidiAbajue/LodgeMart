@@ -10,6 +10,8 @@ import { healthRoutes } from './routes/healthRoutes.js';
 import { authRoutes } from './routes/authRoutes.js';
 import { catalogRoutes } from './routes/catalogRoutes.js';
 import { orderRoutes } from './routes/orderRoutes.js';
+import { vendorRoutes } from './routes/vendorRoutes.js';
+import { riderRoutes } from './routes/riderRoutes.js';
 
 export function createApp() {
   const app = express();
@@ -39,6 +41,8 @@ export function createApp() {
   app.use('/api/auth', authRoutes);
   app.use('/api/catalog', catalogRoutes);
   app.use('/api/orders', orderRoutes);
+  app.use('/api/vendor', vendorRoutes);
+  app.use('/api/rider', riderRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

@@ -65,7 +65,7 @@ ogaemeka@lodgemart.ng / mamangozi@lodgemart.ng (vendor), tunde.dispatch@lodgemar
 | 1 | Setup: Express, Prisma schema, Postgres+Redis (docker), env validation, helmet, CORS, error format, seed, `/api/health`, tests | ✅ Verified 2026-11-27 — 14/14 tests, manual run, 0 audit vulns |
 | 2 | Auth: register/login/logout/me, JWT, bcrypt, role + ownership middleware, Redis rate limits | ✅ Verified 2026-11-27 — 42/42 tests, manual run, 0 audit vulns |
 | 3 | Catalog + orders: server-side routing (transaction, no overselling), my orders, cancel, delegate PIN | ✅ Verified 2026-11-27 — 80/80 tests (×3 runs), manual run, 0 audit vulns |
-| 4 | Vendor + rider: packing, stall pickup (per batch), hub arrival, PIN handover (single-use, rate-limited) | ⬜ |
+| 4 | Vendor + rider: packing, stall pickup (per batch), hub arrival, PIN handover (single-use, rate-limited) | 🟨 Built 2026-11-27 — 111/111 tests, manual run OK; security checklist pending (see HANDOVER.md) |
 | 5 | Paystack (test mode): initialize, webhook (signature + idempotency), vendor transfers; photo upload | ⬜ |
 | 6 | Ratings + admin summary | ⬜ |
 | 7 | API docs for Chidi; frontend wiring support; deploy API (Render/Railway) | ⬜ |
@@ -146,3 +146,7 @@ Business constants: `server/src/config/business.js`. Batch date = today if befor
   incl. 8 parallel orders for 3 items (exactly 3 succeed), parallel wallet overspend, parallel double-cancel.
   Manual: #4083 placed (₦11,650, split Emeka/Ngozi, next-day batch after cutoff), delegate, cancel → wallet −₦200.
   Fixed flaky setup (hookTimeout 30s; phase 3 creates test users directly). Phases 2–3 not pushed yet (user's call).
+- **2026-11-27 — Phase 4 built** on `backend/phase-4-vendor-rider` (worktree `../LodgeMart-backend`, because a
+  frontend session switched the shared folder to `frontend/refurbish`). Vendor packing/inventory, rider manifest,
+  per-batch stall pickup (pending payouts), hub arrival, PIN handover (5-attempt lock, single use, unique commission).
+  111/111 tests ×3, manual run on #4082 OK. Security checklist interrupted (PC shutdown); **see HANDOVER.md**.

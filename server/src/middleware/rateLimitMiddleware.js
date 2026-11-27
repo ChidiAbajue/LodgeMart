@@ -61,3 +61,20 @@ export const orderWriteLimit = rateLimit({
   windowSeconds: 10 * 60,
   key: (req) => req.user?.id,
 });
+
+// Vendor + rider writes (packing, inventory, pickups, arrivals) — per user.
+export const staffWriteLimit = rateLimit({
+  name: 'staff-write',
+  max: 120,
+  windowSeconds: 10 * 60,
+  key: (req) => req.user?.id,
+});
+
+// PIN handover attempts per rider (wrong PINs are also limited per order —
+// see riderService.handover).
+export const handoverLimit = rateLimit({
+  name: 'handover-rider',
+  max: 30,
+  windowSeconds: 15 * 60,
+  key: (req) => req.user?.id,
+});
