@@ -1,6 +1,6 @@
 import { ZodError } from 'zod';
-import { AppError } from '../lib/errors.js';
-import { logger } from '../lib/logger.js';
+import { AppError } from '../utils/errors.js';
+import { logger } from '../utils/logger.js';
 
 export function notFoundHandler(req, res) {
   res.status(404).json({

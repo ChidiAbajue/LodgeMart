@@ -1,8 +1,8 @@
 import { createApp } from './app.js';
 import { env } from './config/env.js';
-import { logger } from './lib/logger.js';
-import { prisma } from './lib/prisma.js';
-import { redis, connectRedis } from './lib/redis.js';
+import { logger } from './utils/logger.js';
+import { prisma } from './config/prisma.js';
+import { redis, connectRedis } from './config/redis.js';
 
 await prisma.$connect();
 await connectRedis();

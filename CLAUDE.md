@@ -63,12 +63,27 @@ ogaemeka@lodgemart.ng / mamangozi@lodgemart.ng (vendor), tunde.dispatch@lodgemar
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Setup: Express, Prisma schema, Postgres+Redis (docker), env validation, helmet, CORS, error format, seed, `/api/health`, tests | ✅ Verified 2026-11-27 — 14/14 tests, manual run, 0 audit vulns |
-| 2 | Auth: register/login/logout/me, JWT, bcrypt, role + ownership middleware, Redis rate limits | ⬜ |
+| 2 | Auth: register/login/logout/me, JWT, bcrypt, role + ownership middleware, Redis rate limits | ✅ Verified 2026-11-27 — 42/42 tests, manual run, 0 audit vulns |
 | 3 | Catalog + orders: server-side routing (transaction, no overselling), my orders, cancel, delegate PIN | ⬜ |
 | 4 | Vendor + rider: packing, stall pickup (per batch), hub arrival, PIN handover (single-use, rate-limited) | ⬜ |
 | 5 | Paystack (test mode): initialize, webhook (signature + idempotency), vendor transfers; photo upload | ⬜ |
 | 6 | Ratings + admin summary | ⬜ |
 | 7 | API docs for Chidi; frontend wiring support; deploy API (Render/Railway) | ⬜ |
+
+## Backend folder layout (`server/src/`)
+
+Standard Express layout — keep new code in this shape:
+- `routes/` — `xxxRoutes.js`: URL → middleware → controller. No logic.
+- `controllers/` — `xxxController.js`: read `req`, call a service, send `res`.
+- `services/` — `xxxService.js`: business logic + Prisma queries (money, status rules live here).
+- `middleware/` — `authMiddleware.js` (authenticate, `requireRole`, `assertOwnerOrAdmin`, **PUBLIC_ROUTES allow-list**),
+  `rateLimitMiddleware.js`, `validateMiddleware.js`, `errorMiddleware.js`.
+- `utils/` — zod schemas (`xxxSchema.js`), errors, logger, password helpers.
+- `config/` — env validation, Prisma client, Redis client.
+
+**Auth model:** `Authorization: Bearer <jwt>` (HS256, `sub`=user id, `jti` for revocation). Every `/api` route
+requires a token unless listed in `PUBLIC_ROUTES`. User is re-loaded from DB per request (disable/role change is
+immediate). Public register creates STUDENT only. Redis down → auth answers 503 (fails closed).
 
 ## Stack notes (read before touching dependencies)
 
@@ -80,6 +95,9 @@ ogaemeka@lodgemart.ng / mamangozi@lodgemart.ng (vendor), tunde.dispatch@lodgemar
 - Tests never run `prisma migrate reset` (destructive). `tests/globalSetup.js` runs `migrate deploy` + seed,
   and refuses to run unless the DB name is exactly `lodgemart_test`.
 - Docker Postgres is on **5433** (a local Postgres already uses 5432).
+- **Windows:** run `npm test` from PowerShell / a `C:\` path. From Git Bash (`/c/...` lower-case drive) vitest
+  fails with "failed to find the runner" (drive-letter case mismatch).
+- `depcheck` flags `pg` as unused — false positive, it's required by `@prisma/adapter-pg`.
 
 ## Known prototype bugs to fix in the backend
 
@@ -96,3 +114,11 @@ ogaemeka@lodgemart.ng / mamangozi@lodgemart.ng (vendor), tunde.dispatch@lodgemar
   integrity). Manual: health 200, unknown origin 403, Redis stopped → 503 "degraded", auto-recovers.
   Security: `npm audit` 0 vulns (upgraded zod 3→4, Prisma 6→7, `effect` override), depcheck clean
   (removed `jsonwebtoken` until Phase 2), staged-diff secret scan clean, no env/dump files tracked.
+- **2026-11-27 — Phase 1 pushed** (`backend/phase-1-setup` on origin; PR not yet opened).
+- **2026-11-27 — Phase 2 verified** on `backend/phase-2-auth` (branched from phase 1). Restructured `server/src`
+  into routes/controllers/services/middleware/utils/config. Auth: register (student-only, strict schema),
+  login (same error for wrong password/unknown email + timing equaliser), logout (Redis `jti` revocation),
+  `/me`; Redis rate limits (login 5/15min per email + 30/15min per IP; register 10/h per IP).
+  Tests 42/42 (tampered/`alg=none`/expired/revoked tokens, role escalation, disabled accounts, limits).
+  Manual: full login→me→logout→401 flow, logs redact Authorization, Redis stopped → 503, recovers.
+  `npm audit` 0 vulns; depcheck clean (pg false positive); staged-diff secret scan clean.

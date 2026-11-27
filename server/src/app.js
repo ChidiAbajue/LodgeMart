@@ -3,9 +3,11 @@ import helmet from 'helmet';
 import cors from 'cors';
 import pinoHttp from 'pino-http';
 import { env } from './config/env.js';
-import { logger } from './lib/logger.js';
-import { healthRouter } from './routes/health.js';
-import { errorHandler, notFoundHandler } from './middleware/error.js';
+import { logger } from './utils/logger.js';
+import { authenticate } from './middleware/authMiddleware.js';
+import { errorHandler, notFoundHandler } from './middleware/errorMiddleware.js';
+import { healthRoutes } from './routes/healthRoutes.js';
+import { authRoutes } from './routes/authRoutes.js';
 
 export function createApp() {
   const app = express();
@@ -27,7 +29,12 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }));
   app.use(pinoHttp({ logger }));
 
-  app.use('/api/health', healthRouter);
+  // Secure by default: every /api route requires a valid token unless it is on
+  // the PUBLIC_ROUTES allow-list in middleware/authMiddleware.js.
+  app.use('/api', authenticate);
+
+  app.use('/api/health', healthRoutes);
+  app.use('/api/auth', authRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

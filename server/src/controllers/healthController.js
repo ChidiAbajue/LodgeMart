@@ -1,8 +1,5 @@
-import { Router } from 'express';
-import { prisma } from '../lib/prisma.js';
-import { redis } from '../lib/redis.js';
-
-export const healthRouter = Router();
+import { prisma } from '../config/prisma.js';
+import { redis } from '../config/redis.js';
 
 async function check(fn) {
   try {
@@ -13,7 +10,8 @@ async function check(fn) {
   }
 }
 
-healthRouter.get('/', async (req, res) => {
+// GET /api/health — public. Reports whether Postgres and Redis are reachable.
+export async function getHealth(req, res) {
   const [database, cache] = await Promise.all([
     check(() => prisma.$queryRaw`SELECT 1`),
     check(() => redis.ping()),
@@ -24,4 +22,4 @@ healthRouter.get('/', async (req, res) => {
     services: { database, redis: cache },
     time: new Date().toISOString(),
   });
-});
+}

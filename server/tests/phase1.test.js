@@ -3,8 +3,8 @@ import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import { createApp } from '../src/app.js';
 import { parseEnv } from '../src/config/env.js';
-import { prisma } from '../src/lib/prisma.js';
-import { redis, connectRedis } from '../src/lib/redis.js';
+import { prisma } from '../src/config/prisma.js';
+import { redis, connectRedis } from '../src/config/redis.js';
 
 const app = createApp();
 
@@ -26,8 +26,9 @@ describe('health check', () => {
 });
 
 describe('error format', () => {
-  it('returns JSON 404 for unknown routes', async () => {
-    const res = await request(app).get('/api/does-not-exist');
+  it('returns JSON 404 for unknown routes outside /api', async () => {
+    // (Unknown /api routes need a token first since Phase 2 — see phase2.test.js.)
+    const res = await request(app).get('/does-not-exist');
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
