@@ -9,6 +9,9 @@ import { hashPassword } from '../src/utils/password.js';
 import { signToken } from '../src/services/tokenService.js';
 
 const app = createApp();
+// Students never see which stall supplied an item (blind ratings), so tests read it from the DB.
+const vendorIdsOf = async (orderId) => (await prisma.orderItem.findMany({ where: { orderId } })).map((i) => i.vendorId);
+
 const TEST_DOMAIN = '@phase3.test';
 const N = 100; // kobo per naira
 const BASE = { zoneId: 'ifite', hubId: 'dynamo-junction', batchSlotId: 'midday', paymentMethod: 'WALLET' };
@@ -175,7 +178,8 @@ describe('placing an order', () => {
     expect(o.deliveryFeeKobo).toBe(600 * N); // ₦10,650 basket → large-basket fee
     expect(o.totalKobo).toBe(11250 * N);
     expect(o.requiresBagMerge).toBe(false);
-    expect(new Set(o.items.map((i) => i.vendor.id))).toEqual(new Set(['v-emeka']));
+    expect(new Set(await vendorIdsOf(o.id))).toEqual(new Set(['v-emeka']));
+    expect(JSON.stringify(o)).not.toMatch(/Oga Emeka|v-emeka|stallNumber/); // blind: no vendor for students
     expect(o.pickupPin).toMatch(/^\d{4}$/);
     expect(o.orderLabel).toBe(`#${o.orderNumber}`);
     expect(o.batchDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -190,7 +194,8 @@ describe('placing an order', () => {
     const res = await placeOrder('ada', [{ productId: 'sku-rice', qty: 1 }, { productId: 'sku-beans', qty: 2 }]);
     expect(res.status).toBe(201);
     expect(res.body.order.requiresBagMerge).toBe(true);
-    const byProduct = Object.fromEntries(res.body.order.items.map((i) => [i.productId, i.vendor.id]));
+    const rows = await prisma.orderItem.findMany({ where: { orderId: res.body.order.id } });
+    const byProduct = Object.fromEntries(rows.map((i) => [i.productId, i.vendorId]));
     expect(byProduct).toEqual({ 'sku-rice': 'v-emeka', 'sku-beans': 'v-ngozi' });
     expect(res.body.order.totalKobo).toBe((5200 + 2 * 6100 + 600) * N);
   });
@@ -207,7 +212,7 @@ describe('placing an order', () => {
     await prisma.vendor.update({ where: { id: 'v-emeka' }, data: { priorityTier: false } });
     const res = await placeOrder('ada', [{ productId: 'sku-rice', qty: 1 }, { productId: 'sku-garri', qty: 1 }]);
     expect(res.status).toBe(201);
-    expect(new Set(res.body.order.items.map((i) => i.vendor.id))).toEqual(new Set(['v-chidi']));
+    expect(new Set(await vendorIdsOf(res.body.order.id))).toEqual(new Set(['v-chidi']));
   });
 
   it('ignores deactivated vendors', async () => {

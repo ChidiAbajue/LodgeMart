@@ -66,14 +66,17 @@ const orderSelect = {
 };
 
 // The pickup PIN is only ever shown to the student who owns the order, and
-// only once it's paid for.
+// only once it's paid for. Students never see which stall supplied an item
+// (blind ratings); admins do.
 function toView(order, viewer) {
-  const { studentId, pickupPin, batchDate, ...rest } = order;
+  const { studentId, pickupPin, batchDate, items, ...rest } = order;
   const showPin = viewer.id === studentId && order.status !== 'PENDING_PAYMENT';
+  const isAdmin = viewer.role === 'ADMIN';
   return {
     ...rest,
     orderLabel: `#${order.orderNumber}`,
     batchDate: toDateString(batchDate),
+    items: items.map(({ vendor, ...item }) => (isAdmin ? { ...item, vendor } : item)),
     ...(showPin && { pickupPin }),
   };
 }

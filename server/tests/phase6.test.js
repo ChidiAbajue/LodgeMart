@@ -350,3 +350,16 @@ describe('admin: summary and orders', () => {
     expect((await request(app).get('/api/admin/orders?status=LOST').set(as('admin'))).status).toBe(400);
   });
 });
+
+describe('admin split inspector', () => {
+  it('shows each order\'s line items with the stall they were routed to (students never see this)', async () => {
+    const order = await placeOrder([{ productId: 'sku-rice', qty: 1 }, { productId: 'sku-beans', qty: 1 }]);
+    const res = await request(app).get('/api/admin/orders').set(as('admin'));
+    const row = res.body.orders.find((o) => o.id === order.id);
+    const vendorsByProduct = Object.fromEntries(row.items.map((i) => [i.product.id, i.vendor.name]));
+    expect(vendorsByProduct).toEqual({ 'sku-rice': 'Oga Emeka', 'sku-beans': 'Mama Ngozi' });
+    expect(row.items[0]).toHaveProperty('wholesaleCostKobo');
+    const mine = await request(app).get(`/api/orders/${order.id}`).set(as('ada'));
+    expect(JSON.stringify(mine.body)).not.toMatch(/Oga Emeka|Mama Ngozi|wholesale/);
+  });
+});

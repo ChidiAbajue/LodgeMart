@@ -100,6 +100,16 @@ export async function listOrders({ status, batchDate, page }) {
         student: { select: { id: true, name: true, email: true, phone: true } },
         hub: { select: { id: true, name: true } },
         _count: { select: { items: true } },
+        // Split inspector: every line item with the stall it was routed to.
+        items: {
+          orderBy: { product: { name: 'asc' } },
+          select: {
+            id: true, qty: true, studentPriceKobo: true, wholesaleCostKobo: true, vendorPacked: true, riderPickedUp: true,
+            itemRating: true, issueTag: true, priceAdjustmentKobo: true, refundedAt: true, refundKobo: true,
+            product: { select: { id: true, name: true, unit: true } },
+            vendor: { select: { id: true, name: true, stallNumber: true } },
+          },
+        },
       },
     }),
   ]);

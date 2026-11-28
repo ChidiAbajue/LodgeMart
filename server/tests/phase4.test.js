@@ -8,6 +8,9 @@ import { signToken } from '../src/services/tokenService.js';
 import { batchDateFor, isPastCutoff, toDateString } from '../src/utils/batchDate.js';
 
 const app = createApp();
+// Students never see which stall supplied an item (blind ratings), so tests read it from the DB.
+const vendorIdsOf = async (orderId) => (await prisma.orderItem.findMany({ where: { orderId } })).map((i) => i.vendorId);
+
 const TEST_DOMAIN = '@phase4.test';
 const N = 100;
 const PHOTO = 'https://res.cloudinary.com/lodgemart-test/image/upload/v1/lodgemart/stall-pickups/stall.jpg'; // .env.test cloud
@@ -52,7 +55,7 @@ const orderRow = (id) => prisma.order.findUnique({ where: { id }, include: { ite
 async function readyOrder(items = [{ productId: 'sku-rice', qty: 1 }]) {
   const date = freshDate();
   const order = await orderFor(date, items);
-  const vendors = new Set(order.items.map((i) => i.vendor.id));
+  const vendors = new Set(await vendorIdsOf(order.id));
   for (const v of vendors) expect((await pickup(date, v)).status).toBe(201);
   expect((await arrive(date)).status).toBe(200);
   return { date, order };

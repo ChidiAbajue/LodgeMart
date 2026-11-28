@@ -122,7 +122,7 @@ describe('layer 2: big rise switches to another verified trader at the locked pr
     await prisma.vendor.update({ where: { id: 'v-chidi' }, data: { ratingScore: 4.0 } }); // now verified (≥ 3.5★)
     const date = freshDate();
     const order = await orderAt(date, [{ productId: 'sku-rice', qty: 1 }, { productId: 'sku-oil', qty: 1 }]);
-    expect(item(order, 'sku-rice').vendor.id).toBe('v-emeka');
+    expect((await itemRow(item(order, 'sku-rice').id)).vendorId).toBe('v-emeka');
 
     const res = await reportAsVendor('emeka', { productId: 'sku-rice', batchDate: date, newWholesalePriceKobo: 5200 * N });
     expect(res.body).toMatchObject({ reassigned: 1, refunded: 0 });

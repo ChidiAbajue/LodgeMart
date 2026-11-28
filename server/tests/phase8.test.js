@@ -13,6 +13,9 @@ import { toDateString } from '../src/utils/batchDate.js';
 // junction-kiosk fallback after a 20-minute hub wait, Priority Supplier Tier,
 // "Missing item" tag + replacement credit, delegate shown on the rider screen.
 const app = createApp();
+// Students never see which stall supplied an item (blind ratings), so tests read it from the DB.
+const vendorIdsOf = async (orderId) => (await prisma.orderItem.findMany({ where: { orderId } })).map((i) => i.vendorId);
+
 const TEST_DOMAIN = '@phase8.test';
 const N = 100;
 const PHOTO = 'https://res.cloudinary.com/lodgemart-test/image/upload/v1/lodgemart/stall-pickups/s.jpg';
@@ -39,7 +42,7 @@ async function orderAt(date, items) {
 async function readyAtHub(items = [{ productId: 'sku-rice', qty: 1 }]) {
   const date = freshDate();
   const order = await orderAt(date, items);
-  for (const v of new Set(order.items.map((i) => i.vendor.id))) {
+  for (const v of new Set(await vendorIdsOf(order.id))) {
     await request(app).post('/api/rider/stall-pickups').set(as('rider')).send({ vendorId: v, batchDate: date, batchSlotId: 'midday', photoUrl: PHOTO });
   }
   await request(app).post('/api/rider/hub-arrivals').set(as('rider')).send({ hubId: 'dynamo-junction', batchDate: date, batchSlotId: 'midday' });
