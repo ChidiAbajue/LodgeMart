@@ -17,7 +17,8 @@ const card = 'rounded-lg bg-white shadow-[0_8px_24px_-16px_rgb(0_0_0/0.35)]';
 const PRIORITY_MIN = 4.5;
 const AT_MARKET = ['ORDER_PLACED', 'PACKED_AT_MARKET'];
 
-function StatTile({ label, kobo, note, highlight = false, negative = false }) {
+function StatTile({ label, kobo, note, highlight = false, negative: isCost = false }) {
+  const negative = isCost && kobo > 0; // a ₦0 cost isn't shown as a red minus
   return (
     <Reveal.Item className={`flex flex-col justify-between rounded-lg p-5 ${highlight ? 'bg-brand-700 text-white' : `bg-white text-ink ${card}`}`}>
       <p className={`font-display text-xs font-medium uppercase tracking-[0.16em] ${highlight ? 'text-white/70' : 'text-muted'}`}>{label}</p>
