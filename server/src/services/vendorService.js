@@ -16,7 +16,7 @@ export async function getDashboard(user) {
     prisma.vendor.findUnique({
       where: { id: vendorId },
       select: {
-        id: true, name: true, market: true, stallNumber: true, bankName: true, bankAccountNumber: true,
+        id: true, name: true, market: true, stallNumber: true, bankName: true, bankCode: true, bankAccountNumber: true,
         ratingScore: true, ratingCount: true, payoutBalanceKobo: true, isActive: true,
         inventory: {
           orderBy: { product: { name: 'asc' } },

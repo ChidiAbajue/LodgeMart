@@ -12,5 +12,6 @@ vendorRoutes.use(requireRole('VENDOR'));
 
 vendorRoutes.get('/dashboard', vendorController.getDashboard);
 vendorRoutes.get('/items', vendorController.listItems);
+vendorRoutes.get('/feedback', vendorController.getFeedback);
 vendorRoutes.patch('/items/:itemId/packed', validateParams(itemIdParams), staffWriteLimit, validate(setPackedSchema), vendorController.setPacked);
 vendorRoutes.put('/inventory/:productId', validateParams(productIdParams), staffWriteLimit, validate(inventorySchema), vendorController.setInventory);

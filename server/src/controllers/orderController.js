@@ -1,4 +1,5 @@
 import * as orderService from '../services/orderService.js';
+import { rateOrder } from '../services/ratingService.js';
 
 // POST /api/orders — student places an order.
 //   WALLET   → { order }                       (paid, status ORDER_PLACED)
@@ -31,4 +32,10 @@ export async function cancelOrder(req, res) {
 // POST /api/orders/:id/delegate — owner hands pickup to a roommate (new PIN).
 export async function delegatePickup(req, res) {
   res.json(await orderService.delegatePickup(req.user, req.params.id, req.body));
+}
+
+// POST /api/orders/:id/rating — owner, once, after collection.
+// { stars: 1-5, flaggedItems: [{ itemId, issueTag }] }  (flags required for 1–3 stars)
+export async function rateOrderHandler(req, res) {
+  res.json(await rateOrder(req.user, req.params.id, req.body));
 }

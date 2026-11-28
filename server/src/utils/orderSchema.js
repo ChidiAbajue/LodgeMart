@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { personName, nigerianPhone } from './authSchema.js';
+import { ISSUE_TAGS } from '../config/business.js';
 
 const id = z.string().trim().min(1).max(64);
 
@@ -31,4 +32,15 @@ export const delegateSchema = z.strictObject({
 
 export const orderIdParams = z.strictObject({
   id: z.uuid('Invalid order id'),
+});
+
+// Rating after collection. 4–5 stars: no flags needed. 1–3 stars: flag the
+// item(s) with a problem (one tag each).
+export const ratingSchema = z.strictObject({
+  stars: z.number().int().min(1).max(5),
+  flaggedItems: z
+    .array(z.strictObject({ itemId: z.uuid(), issueTag: z.enum(ISSUE_TAGS) }))
+    .max(20)
+    .default([])
+    .refine((f) => new Set(f.map((x) => x.itemId)).size === f.length, 'Each item can only be flagged once'),
 });

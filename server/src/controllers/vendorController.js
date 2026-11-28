@@ -1,5 +1,11 @@
 import * as vendorService from '../services/vendorService.js';
 import { vendorItemsQuery } from '../utils/staffSchema.js';
+import { vendorFeedback } from '../services/ratingService.js';
+
+// GET /api/vendor/feedback — ratings + flagged items for my stall (no student identity).
+export async function getFeedback(req, res) {
+  res.json({ feedback: await vendorFeedback(req.user) });
+}
 
 // GET /api/vendor/dashboard — stall profile, inventory, payouts.
 export async function getDashboard(req, res) {

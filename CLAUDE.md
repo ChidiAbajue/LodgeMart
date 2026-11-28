@@ -67,7 +67,7 @@ ogaemeka@lodgemart.ng / mamangozi@lodgemart.ng (vendor), tunde.dispatch@lodgemar
 | 3 | Catalog + orders: server-side routing (transaction, no overselling), my orders, cancel, delegate PIN | ✅ Verified 2026-11-27 — 80/80 tests (×3 runs), manual run, 0 audit vulns |
 | 4 | Vendor + rider: packing, stall pickup (per batch), hub arrival, PIN handover (single-use, rate-limited) | ✅ Verified 2026-11-28 — 111/111 tests, manual run, 0 audit vulns |
 | 5 | Paystack (test mode): initialize, webhook (signature + idempotency), vendor transfers; photo upload | 🟨 Built 2026-11-28 — 137/137 tests (Paystack mocked), manual run without keys OK, 0 audit vulns. **Pending: manual run with real Paystack TEST keys + Cloudinary** |
-| 6 | Ratings + admin summary | ⬜ |
+| 6 | Ratings + admin summary | ✅ Verified 2026-11-28 — 167/167 tests, manual run, 0 audit vulns |
 | 7 | API docs for Chidi; frontend wiring support; deploy API (Render/Railway) | ⬜ |
 
 ## Backend folder layout (`server/src/`)
@@ -108,6 +108,7 @@ immediate). Public register creates STUDENT only. Redis down → auth answers 50
 - Routing happened per order at checkout without locking → now in a DB transaction with conditional stock
   decrements (`updateMany ... stockQty >= qty`); a lost race re-routes (max 3 tries) then 409 OUT_OF_STOCK.
 - Cancel could refund twice on double-click → status flip is a conditional update; only one request refunds.
+- Rating 1–3★ with no item flagged gave every vendor 5★ → now 400 FLAG_REQUIRED.
 
 ## Phase 3 API (for Chidi — full docs in Phase 7)
 
@@ -163,3 +164,10 @@ Business constants: `server/src/config/business.js`. Batch date = today if befor
   Env: live `sk_live_` key refused unless NODE_ENV=production. Found+fixed during tests: duplicate transfer-recipient
   creation when one vendor had 2 payouts; cancel-vs-payment race could cancel a just-paid order with ₦0 refund.
   137/137 ×3. Manual (no keys): card → 503, forged webhook → 401, uploads → 503, wallet still works, no secrets in logs.
+- **2026-11-28 — Phase 6 verified** on `backend/phase-6-ratings-admin`. Ratings (prototype rules: 4–5★ credit all
+  stalls; 1–3★ only flagged items' stalls, others 5★; one rating per vendor per order; once per order via conditional
+  `ratedAt` gate; running average under vendor row lock), vendor feedback (no student identity). Admin: summary
+  (sales, margin, fees, refunds, rider cost, gross profit, wallet liabilities, payouts, vendor health), all-orders list
+  (no PINs), staff accounts (VENDOR with stall+bank / RIDER / ADMIN; students only via public sign-up), disable user
+  (immediate), vendor edit (bank change clears Paystack recipient). 167/167 ×3. Manual: #4082 delivered → 2★ flag beans
+  → Ngozi 4.6→4.47, Emeka 4.8→4.81, profit ₦1,650, pending payouts ₦12,650.

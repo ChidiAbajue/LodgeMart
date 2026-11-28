@@ -7,5 +7,8 @@ export const CANCELLATION_FEE_KOBO = 200_00; // ₦200
 // Vendors rated below this are not routed any orders.
 export const MIN_VENDOR_RATING = 3.5;
 
+// Issue tags offered by the frontend rating modal (src/components/ItemRatingModal.jsx).
+export const ISSUE_TAGS = ['Short Measure', 'Weevils/Dusty', 'Damaged Pack'];
+
 // Africa/Lagos is UTC+1 all year (no daylight saving).
 export const LAGOS_UTC_OFFSET_MINUTES = 60;
