@@ -40,17 +40,17 @@ const products = [
 ];
 const vendors = [
   {
-    id: 'v-emeka', name: 'Oga Emeka', stallNumber: 'Stall B-14', bankName: 'GTBank', bankAccountNumber: '0123456789',
+    id: 'v-emeka', name: 'Oga Emeka', stallNumber: 'Stall B-14', bankName: 'GTBank', bankCode: '058', bankAccountNumber: '0123456789',
     ratingScore: 4.8, ratingCount: 24,
     inventory: { 'sku-rice': [4700, 45], 'sku-garri': [2450, 60], 'sku-oil': [2350, 40], 'sku-spaghetti': [3900, 35] },
   },
   {
-    id: 'v-ngozi', name: 'Mama Ngozi', stallNumber: 'Stall C-08', bankName: 'Access Bank', bankAccountNumber: '9876543210',
+    id: 'v-ngozi', name: 'Mama Ngozi', stallNumber: 'Stall C-08', bankName: 'Access Bank', bankCode: '044', bankAccountNumber: '9876543210',
     ratingScore: 4.6, ratingCount: 19,
     inventory: { 'sku-beans': [5500, 30], 'sku-indomie': [7750, 25], 'sku-milo': [5350, 28], 'sku-detergent': [1800, 50] },
   },
   {
-    id: 'v-chidi', name: 'Brother Chidi', stallNumber: 'Stall A-03', bankName: 'Zenith Bank', bankAccountNumber: '5566778899',
+    id: 'v-chidi', name: 'Brother Chidi', stallNumber: 'Stall A-03', bankName: 'Zenith Bank', bankCode: '057', bankAccountNumber: '5566778899',
     ratingScore: 3.4, ratingCount: 10,
     inventory: { 'sku-rice': [4650, 20], 'sku-garri': [2400, 20] },
   },
@@ -97,7 +97,7 @@ async function main() {
     await prisma.vendor.create({
       data: {
         id: v.id, name: v.name, market: 'Eke Awka', stallNumber: v.stallNumber,
-        bankName: v.bankName, bankAccountNumber: v.bankAccountNumber,
+        bankName: v.bankName, bankCode: v.bankCode, bankAccountNumber: v.bankAccountNumber,
         ratingScore: v.ratingScore, ratingCount: v.ratingCount,
         inventory: {
           create: Object.entries(v.inventory).map(([productId, [price, qty]]) => ({

@@ -53,7 +53,7 @@ export async function listItems(user, { batchDate, batchSlotId }) {
     where: {
       vendorId,
       order: {
-        status: { not: 'CANCELLED' },
+        status: { notIn: ['CANCELLED', 'PENDING_PAYMENT'] }, // unpaid card orders aren't packed yet
         ...(batchDate && { batchDate: fromDateString(batchDate) }),
         ...(batchSlotId && { batchSlotId }),
       },

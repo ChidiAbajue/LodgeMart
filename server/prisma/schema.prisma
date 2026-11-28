@@ -34,6 +34,7 @@ enum PaymentMethod {
 
 enum PayoutStatus {
   PENDING
+  PROCESSING // transfer sent to Paystack, waiting for transfer.success / transfer.failed
   PAID
   FAILED
 }
@@ -127,6 +128,8 @@ model Vendor {
   stallNumber       String
   bankName          String
   bankAccountNumber String
+  bankCode              String? // Paystack bank code, e.g. "058" GTBank
+  paystackRecipientCode String? // created once, reused for every transfer
   ratingScore       Decimal  @default(5) @db.Decimal(3, 2)
   ratingCount       Int      @default(0)
   payoutBalanceKobo Int      @default(0) // total released to this vendor
@@ -223,7 +226,10 @@ model StallPickup {
   capturedAt   DateTime     @default(now())
   payoutKobo   Int
   payoutStatus PayoutStatus @default(PENDING)
-  transferRef  String?      @unique
+  transferRef  String?      @unique // current attempt's reference (new one per retry)
+  payoutAttempts      Int       @default(0)
+  payoutFailureReason String?
+  paidAt              DateTime?
 
   vendor    Vendor      @relation(fields: [vendorId], references: [id])
   rider     User        @relation(fields: [riderId], references: [id])

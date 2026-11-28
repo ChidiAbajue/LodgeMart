@@ -1,8 +1,16 @@
 import * as orderService from '../services/orderService.js';
 
-// POST /api/orders — student places an order (wallet payment).
+// POST /api/orders — student places an order.
+//   WALLET   → { order }                       (paid, status ORDER_PLACED)
+//   PAYSTACK → { order, payment: { authorizationUrl, reference } }  (status PENDING_PAYMENT;
+//              send the student to authorizationUrl)
 export async function createOrder(req, res) {
-  res.status(201).json({ order: await orderService.createOrder(req.user, req.body) });
+  res.status(201).json(await orderService.createOrder(req.user, req.body));
+}
+
+// POST /api/orders/:id/verify-payment — owner; asks Paystack now (if the webhook is slow).
+export async function verifyPayment(req, res) {
+  res.json({ order: await orderService.verifyMyPayment(req.user, req.params.id) });
 }
 
 // GET /api/orders — the logged-in student's own orders, newest first.

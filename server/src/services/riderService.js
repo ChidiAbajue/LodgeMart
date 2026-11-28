@@ -4,6 +4,7 @@ import { redis } from '../config/redis.js';
 import { RIDER_COMMISSION_KOBO } from '../config/business.js';
 import { AppError, notFound, serviceUnavailable } from '../utils/errors.js';
 import { fromDateString, isPastCutoff, toDateString } from '../utils/batchDate.js';
+import { assertPickupPhotoUrl } from './photoService.js';
 
 const AT_MARKET = ['ORDER_PLACED', 'PACKED_AT_MARKET'];
 const PIN_MAX_FAILURES = 5;
@@ -27,7 +28,7 @@ export async function getManifest({ batchDate, batchSlotId }) {
 
   const [orders, pickups, arrivals] = await Promise.all([
     prisma.order.findMany({
-      where: { ...batch, status: { not: 'CANCELLED' } },
+      where: { ...batch, status: { notIn: ['CANCELLED', 'PENDING_PAYMENT'] } }, // unpaid orders aren't real yet
       orderBy: { orderNumber: 'asc' },
       select: {
         id: true, orderNumber: true, status: true, requiresBagMerge: true, delegateName: true,
@@ -77,6 +78,7 @@ export async function getManifest({ batchDate, batchSlotId }) {
 // collected and paid for every uncollected item regardless of batch).
 // One pickup + one payout per vendor per batch (DB unique constraint).
 export async function confirmStallPickup(rider, { vendorId, batchDate, batchSlotId, photoUrl }) {
+  assertPickupPhotoUrl(photoUrl);
   const slot = await loadSlot(batchSlotId);
   const date = fromDateString(batchDate);
   if (!isPastCutoff(slot, date)) {

@@ -1,12 +1,15 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { prisma } from '../config/prisma.js';
+import { env } from '../config/env.js';
 import { CANCELLATION_FEE_KOBO, DELIVERY_FEE_KOBO } from '../config/business.js';
 import { AppError, notFound } from '../utils/errors.js';
+import { logger } from '../utils/logger.js';
 import { batchDateFor, toDateString } from '../utils/batchDate.js';
 import { routeBasket } from './routingService.js';
 import { routableVendor } from './catalogService.js';
+import * as paystack from './paystackClient.js';
 
-const CANCELLABLE = ['ORDER_PLACED', 'PACKED_AT_MARKET']; // before the rider has picked up
+const CANCELLABLE = ['PENDING_PAYMENT', 'ORDER_PLACED', 'PACKED_AT_MARKET']; // before the rider has picked up
 const DELEGATABLE = ['ORDER_PLACED', 'PACKED_AT_MARKET', 'RIDER_IN_TRANSIT', 'READY_AT_HUB'];
 const MAX_STOCK_RACE_RETRIES = 3;
 
@@ -56,14 +59,16 @@ const orderSelect = {
   },
 };
 
-// The pickup PIN is only ever shown to the student who owns the order.
+// The pickup PIN is only ever shown to the student who owns the order, and
+// only once it's paid for.
 function toView(order, viewer) {
   const { studentId, pickupPin, batchDate, ...rest } = order;
+  const showPin = viewer.id === studentId && order.status !== 'PENDING_PAYMENT';
   return {
     ...rest,
     orderLabel: `#${order.orderNumber}`,
     batchDate: toDateString(batchDate),
-    ...(viewer.id === studentId && { pickupPin }),
+    ...(showPin && { pickupPin }),
   };
 }
 
@@ -87,19 +92,37 @@ async function loadOrderInputs({ items, zoneId, hubId, batchSlotId }) {
   return { slot, products: byId };
 }
 
-// Place an order paid from the student's wallet. Everything happens in one
-// transaction: if any step fails, no stock or money moves.
+// Put an order's items back on the shelf (cancel / expiry).
+async function restock(tx, orderId) {
+  const items = await tx.orderItem.findMany({ where: { orderId }, select: { vendorId: true, productId: true, qty: true } });
+  for (const item of items) {
+    await tx.vendorInventory.updateMany({
+      where: { vendorId: item.vendorId, productId: item.productId },
+      data: { stockQty: { increment: item.qty } },
+    });
+  }
+}
+
+// Place an order. Routing + stock reservation happen in one transaction.
+//   WALLET   → paid immediately from the wallet → ORDER_PLACED.
+//   PAYSTACK → PENDING_PAYMENT (stock held); returns a Paystack checkout URL.
+//              The webhook (or verifyMyPayment) marks it paid.
 export async function createOrder(student, input) {
   const { slot, products } = await loadOrderInputs(input);
   const lines = input.items;
+  const isCard = input.paymentMethod === 'PAYSTACK';
+  if (isCard && !paystack.paystackEnabled()) {
+    throw new AppError(503, 'PAYMENTS_NOT_CONFIGURED', 'Card payments are not available right now');
+  }
 
   // Prices come from the database, never from the client.
   const subtotalKobo = lines.reduce((sum, l) => sum + products.get(l.productId).studentPriceKobo * l.qty, 0);
   const totalKobo = subtotalKobo + DELIVERY_FEE_KOBO;
 
-  for (let attempt = 1; attempt <= MAX_STOCK_RACE_RETRIES; attempt++) {
+  let order;
+  for (let attempt = 1; attempt <= MAX_STOCK_RACE_RETRIES && !order; attempt++) {
     try {
-      const order = await prisma.$transaction(async (tx) => {
+      order = await prisma.$transaction(async (tx) => {
         const inventory = await tx.vendorInventory.findMany({
           where: { productId: { in: lines.map((l) => l.productId) }, stockQty: { gt: 0 }, vendor: routableVendor },
           select: {
@@ -133,13 +156,15 @@ export async function createOrder(student, input) {
           if (count === 0) throw new StockRace();
         }
 
-        // Same pattern for the wallet: the balance can never go negative.
-        const paid = await tx.user.updateMany({
-          where: { id: student.id, walletBalanceKobo: { gte: totalKobo } },
-          data: { walletBalanceKobo: { decrement: totalKobo } },
-        });
-        if (paid.count === 0) {
-          throw new AppError(402, 'INSUFFICIENT_FUNDS', 'Insufficient LodgeMart Wallet balance');
+        if (!isCard) {
+          // Same pattern for the wallet: the balance can never go negative.
+          const paid = await tx.user.updateMany({
+            where: { id: student.id, walletBalanceKobo: { gte: totalKobo } },
+            data: { walletBalanceKobo: { decrement: totalKobo } },
+          });
+          if (paid.count === 0) {
+            throw new AppError(402, 'INSUFFICIENT_FUNDS', 'Insufficient LodgeMart Wallet balance');
+          }
         }
 
         return tx.order.create({
@@ -149,15 +174,15 @@ export async function createOrder(student, input) {
             hubId: input.hubId,
             batchSlotId: slot.id,
             batchDate: batchDateFor(slot),
-            status: 'ORDER_PLACED',
+            status: isCard ? 'PENDING_PAYMENT' : 'ORDER_PLACED',
             pickupPin: newPickupPin(),
             requiresBagMerge: new Set(routed.assignments.map((a) => a.vendorId)).size >= 2,
             subtotalKobo,
             deliveryFeeKobo: DELIVERY_FEE_KOBO,
             totalKobo,
-            paymentMethod: 'WALLET',
-            paymentRef: `LM-WALLET-${randomUUID()}`,
-            paidAt: new Date(),
+            paymentMethod: isCard ? 'PAYSTACK' : 'WALLET',
+            paymentRef: isCard ? `lm-ps-${randomUUID()}` : `LM-WALLET-${randomUUID()}`,
+            paidAt: isCard ? null : new Date(),
             items: {
               create: routed.assignments.map((a) => ({
                 productId: a.productId,
@@ -171,13 +196,122 @@ export async function createOrder(student, input) {
           select: orderSelect,
         });
       });
-      return toView(order, student);
     } catch (err) {
-      if (err instanceof StockRace) continue;
-      throw err;
+      if (!(err instanceof StockRace)) throw err;
     }
   }
-  throw new AppError(409, 'OUT_OF_STOCK', 'Stock just ran out for an item in your basket, please try again');
+  if (!order) throw new AppError(409, 'OUT_OF_STOCK', 'Stock just ran out for an item in your basket, please try again');
+  if (!isCard) return { order: toView(order, student) };
+
+  // Card: open a Paystack checkout. If Paystack can't be reached, release the
+  // held stock straight away rather than waiting for expiry.
+  try {
+    const checkout = await paystack.initializeTransaction({
+      email: student.email,
+      amountKobo: totalKobo,
+      reference: order.paymentRef,
+      metadata: { orderId: order.id, orderNumber: order.orderNumber },
+    });
+    return {
+      order: toView(order, student),
+      payment: { provider: 'PAYSTACK', reference: order.paymentRef, authorizationUrl: checkout.authorization_url },
+    };
+  } catch (err) {
+    await releaseUnpaidOrder(order.id);
+    if (err instanceof paystack.PaystackError) {
+      throw new AppError(502, 'PAYMENT_PROVIDER_ERROR', 'Could not start card payment, please try again');
+    }
+    throw err;
+  }
+}
+
+// Cancel an unpaid card order and return its stock. Safe to call twice.
+async function releaseUnpaidOrder(orderId) {
+  return prisma.$transaction(async (tx) => {
+    const { count } = await tx.order.updateMany({
+      where: { id: orderId, status: 'PENDING_PAYMENT' },
+      data: { status: 'CANCELLED', cancelledAt: new Date(), refundKobo: 0 },
+    });
+    if (count === 1) await restock(tx, orderId);
+    return count === 1;
+  });
+}
+
+// Unpaid card orders older than the TTL give their stock back. Run on a timer
+// (server.js) and safe to run from several servers at once.
+export async function expireStalePendingOrders(now = new Date()) {
+  const cutoff = new Date(now.getTime() - env.PENDING_PAYMENT_TTL_MINUTES * 60_000);
+  const stale = await prisma.order.findMany({
+    where: { status: 'PENDING_PAYMENT', createdAt: { lt: cutoff } },
+    select: { id: true },
+    take: 200,
+  });
+  let expired = 0;
+  for (const { id } of stale) if (await releaseUnpaidOrder(id)) expired++;
+  if (expired) logger.info({ expired }, 'Expired unpaid card orders');
+  return expired;
+}
+
+// Apply a confirmed Paystack payment. Called by the webhook and by the
+// student's "check payment" button; idempotent, so duplicates are harmless.
+//   PAID                   → order moves PENDING_PAYMENT → ORDER_PLACED
+//   LATE_PAYMENT_REFUNDED  → order was already cancelled/expired: money goes to the wallet
+//   ALREADY_PROCESSED / NOT_PAID / AMOUNT_MISMATCH / UNKNOWN_REFERENCE
+export async function applyPaystackPayment({ reference, status, amount, currency }) {
+  if (status !== 'success') return 'NOT_PAID';
+  const order = await prisma.order.findUnique({
+    where: { paymentRef: reference },
+    select: { id: true, studentId: true, totalKobo: true, paymentMethod: true },
+  });
+  if (!order || order.paymentMethod !== 'PAYSTACK') return 'UNKNOWN_REFERENCE';
+  if (amount !== order.totalKobo || currency !== 'NGN') {
+    // Never mark paid on a short (or wrong-currency) payment. Needs a human.
+    logger.error({ reference, amount, currency, expected: order.totalKobo }, 'Paystack amount mismatch');
+    return 'AMOUNT_MISMATCH';
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const paid = await tx.order.updateMany({
+      where: { id: order.id, status: 'PENDING_PAYMENT' },
+      data: { status: 'ORDER_PLACED', paidAt: new Date() },
+    });
+    if (paid.count === 1) return 'PAID';
+
+    // Paid after it was cancelled/expired: refund the full amount to the wallet, once.
+    const late = await tx.order.updateMany({
+      where: { id: order.id, status: 'CANCELLED', paidAt: null },
+      data: { paidAt: new Date(), refundKobo: order.totalKobo },
+    });
+    if (late.count === 1) {
+      await tx.user.update({ where: { id: order.studentId }, data: { walletBalanceKobo: { increment: order.totalKobo } } });
+      logger.warn({ reference }, 'Payment arrived after order was cancelled; refunded to wallet');
+      return 'LATE_PAYMENT_REFUNDED';
+    }
+    return 'ALREADY_PROCESSED';
+  });
+}
+
+// Student's "I've paid, check now" button (useful if the webhook is slow):
+// asks Paystack directly, then applies the same idempotent logic.
+export async function verifyMyPayment(student, id) {
+  const order = await prisma.order.findFirst({
+    where: { id, studentId: student.id },
+    select: { paymentRef: true, paymentMethod: true, status: true },
+  });
+  if (!order) throw notFound('Order not found');
+  if (order.paymentMethod === 'PAYSTACK' && order.status === 'PENDING_PAYMENT') {
+    let tx;
+    try {
+      tx = await paystack.verifyTransaction(order.paymentRef);
+    } catch (err) {
+      if (err instanceof paystack.PaystackError) {
+        throw new AppError(502, 'PAYMENT_PROVIDER_ERROR', 'Could not check payment, please try again');
+      }
+      throw err;
+    }
+    await applyPaystackPayment(tx);
+  }
+  return getOrder(student, id);
 }
 
 export async function listMyOrders(student) {
@@ -197,30 +331,38 @@ export async function getOrder(viewer, id) {
   return toView(order, viewer);
 }
 
-// Cancel before rider pickup: refund total minus the cancellation fee to the
-// wallet and put the stock back. The status update only succeeds once, so a
-// double-click (or two devices) can never refund twice.
+// Cancel before rider pickup. Paid orders: refund total minus the cancellation
+// fee to the wallet. Unpaid card orders: no fee, nothing to refund. Either way
+// stock goes back. The status update only succeeds once, so a double-click (or
+// two devices) can never refund twice.
 export async function cancelOrder(student, id) {
   return prisma.$transaction(async (tx) => {
     const order = await tx.order.findFirst({
       where: { id, studentId: student.id },
-      select: { id: true, status: true, totalKobo: true, items: { select: { vendorId: true, productId: true, qty: true } } },
+      select: { id: true, status: true, totalKobo: true },
     });
     if (!order) throw notFound('Order not found');
 
-    const refundKobo = Math.max(0, order.totalKobo - CANCELLATION_FEE_KOBO);
-    const { count } = await tx.order.updateMany({
-      where: { id, status: { in: CANCELLABLE } },
-      data: { status: 'CANCELLED', cancelledAt: new Date(), refundKobo },
-    });
-    if (count === 0) {
-      // Re-read: a parallel request may have just cancelled it.
-      const { status } = await tx.order.findUnique({ where: { id }, select: { status: true } });
-      if (status === 'CANCELLED') {
-        throw new AppError(409, 'ALREADY_CANCELLED', 'This order has already been cancelled');
+    // The refund depends on whether it was paid, so the update only applies if
+    // the status is still exactly what we read. If a payment confirmation
+    // (PENDING_PAYMENT → ORDER_PLACED) lands in between, re-read and recompute.
+    let status = order.status;
+    let refundKobo;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (status === 'CANCELLED') throw new AppError(409, 'ALREADY_CANCELLED', 'This order has already been cancelled');
+      if (!CANCELLABLE.includes(status)) {
+        throw new AppError(409, 'CANNOT_CANCEL', 'Order cannot be cancelled once the rider has picked it up');
       }
-      throw new AppError(409, 'CANNOT_CANCEL', 'Order cannot be cancelled once the rider has picked it up');
+      refundKobo = status === 'PENDING_PAYMENT' ? 0 : Math.max(0, order.totalKobo - CANCELLATION_FEE_KOBO);
+      const { count } = await tx.order.updateMany({
+        where: { id, status },
+        data: { status: 'CANCELLED', cancelledAt: new Date(), refundKobo },
+      });
+      if (count === 1) break;
+      ({ status } = await tx.order.findUnique({ where: { id }, select: { status: true } }));
+      if (attempt === 1) throw new AppError(409, 'CANNOT_CANCEL', 'Order changed while cancelling, please try again');
     }
+    const unpaid = refundKobo === 0 && status === 'PENDING_PAYMENT';
 
     // Partially collected (one stall picked up, another not yet): the vendor has
     // already been paid for those items, so the order can't be cancelled.
@@ -231,18 +373,20 @@ export async function cancelOrder(student, id) {
       throw new AppError(409, 'CANNOT_CANCEL', 'Order cannot be cancelled once the rider has picked it up');
     }
 
-    for (const item of order.items) {
-      await tx.vendorInventory.updateMany({
-        where: { vendorId: item.vendorId, productId: item.productId },
-        data: { stockQty: { increment: item.qty } },
+    await restock(tx, id);
+    if (refundKobo > 0) {
+      await tx.user.update({
+        where: { id: student.id },
+        data: { walletBalanceKobo: { increment: refundKobo } },
       });
     }
-    await tx.user.update({
-      where: { id: student.id },
-      data: { walletBalanceKobo: { increment: refundKobo } },
-    });
 
-    return { orderId: id, status: 'CANCELLED', refundKobo, cancellationFeeKobo: order.totalKobo - refundKobo };
+    return {
+      orderId: id,
+      status: 'CANCELLED',
+      refundKobo,
+      cancellationFeeKobo: unpaid ? 0 : order.totalKobo - refundKobo,
+    };
   });
 }
 

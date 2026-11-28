@@ -12,6 +12,8 @@ import { catalogRoutes } from './routes/catalogRoutes.js';
 import { orderRoutes } from './routes/orderRoutes.js';
 import { vendorRoutes } from './routes/vendorRoutes.js';
 import { riderRoutes } from './routes/riderRoutes.js';
+import { paymentRoutes } from './routes/paymentRoutes.js';
+import { adminRoutes } from './routes/adminRoutes.js';
 
 export function createApp() {
   const app = express();
@@ -30,7 +32,8 @@ export function createApp() {
       credentials: true,
     }),
   );
-  app.use(express.json({ limit: '1mb' }));
+  // Keep the exact raw bytes too: Paystack webhook signatures are computed over them.
+  app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
   app.use(pinoHttp({ logger }));
 
   // Secure by default: every /api route requires a valid token unless it is on
@@ -43,6 +46,8 @@ export function createApp() {
   app.use('/api/orders', orderRoutes);
   app.use('/api/vendor', vendorRoutes);
   app.use('/api/rider', riderRoutes);
+  app.use('/api/payments', paymentRoutes);
+  app.use('/api/admin', adminRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

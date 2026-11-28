@@ -10,7 +10,7 @@ import { batchDateFor, isPastCutoff, toDateString } from '../src/utils/batchDate
 const app = createApp();
 const TEST_DOMAIN = '@phase4.test';
 const N = 100;
-const PHOTO = 'https://res.cloudinary.com/demo/image/upload/stall.jpg';
+const PHOTO = 'https://res.cloudinary.com/lodgemart-test/image/upload/v1/lodgemart/stall-pickups/stall.jpg'; // .env.test cloud
 // Test batches live in Jan 2025 (in the past → after cutoff), one date per test.
 let dayCounter = 0;
 const freshDate = () => toDateString(new Date(Date.UTC(2025, 0, 1 + dayCounter++)));

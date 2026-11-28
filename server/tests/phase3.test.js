@@ -227,7 +227,7 @@ describe('placing an order', () => {
     ['zero qty', { items: [{ productId: 'sku-rice', qty: 0 }] }],
     ['fractional qty', { items: [{ productId: 'sku-rice', qty: 1.5 }] }],
     ['duplicate product lines', { items: [{ productId: 'sku-rice', qty: 1 }, { productId: 'sku-rice', qty: 1 }] }],
-    ['Paystack (not until Phase 5)', { paymentMethod: 'PAYSTACK' }],
+    ['unknown payment method', { paymentMethod: 'CASH' }],
   ])('rejects %s', async (_label, override) => {
     const res = await request(app).post('/api/orders').set(auth('ada'))
       .send({ ...BASE, items: [{ productId: 'sku-rice', qty: 1 }], ...override });

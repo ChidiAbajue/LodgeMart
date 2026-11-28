@@ -15,4 +15,5 @@ orderRoutes.post('/', student, orderWriteLimit, validate(createOrderSchema), ord
 orderRoutes.get('/', student, orderController.listMyOrders);
 orderRoutes.get('/:id', requireRole('STUDENT', 'ADMIN'), byId, orderController.getOrder);
 orderRoutes.post('/:id/cancel', student, byId, orderWriteLimit, orderController.cancelOrder);
+orderRoutes.post('/:id/verify-payment', student, byId, orderWriteLimit, orderController.verifyPayment);
 orderRoutes.post('/:id/delegate', student, byId, orderWriteLimit, validate(delegateSchema), orderController.delegatePickup);

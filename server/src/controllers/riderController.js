@@ -1,5 +1,13 @@
 import * as riderService from '../services/riderService.js';
 import { manifestQuery } from '../utils/staffSchema.js';
+import { createPickupUploadSignature } from '../services/photoService.js';
+
+// GET /api/rider/photo-upload-signature — signed, short-lived Cloudinary upload
+// permission. The phone POSTs the photo + these fields to uploadUrl, then sends
+// the returned secure_url as photoUrl when confirming the stall pickup.
+export function getPhotoUploadSignature(req, res) {
+  res.json(createPickupUploadSignature());
+}
 
 // GET /api/rider/manifest?batchDate=YYYY-MM-DD&batchSlotId=midday
 export async function getManifest(req, res) {

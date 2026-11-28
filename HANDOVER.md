@@ -30,7 +30,8 @@ GitHub: **https://github.com/ChidiAbajue/LodgeMart** (Chidi's repo; we push bran
 | `backend/phase-1-setup` | `050d666` | yes | Phase 1 only |
 | `backend/phase-2-auth` | `b8311e5` | yes | Phases 1+2 |
 | `backend/phase-3-orders` | `b14d708` | yes | Phases 1+2+3 |
-| **`backend/phase-4-vendor-rider`** | (this commit) | yes | **Phases 1–4. ← CONTINUE BACKEND WORK HERE** |
+| `backend/phase-4-vendor-rider` | `1f61a33` | yes | Phases 1–4 |
+| **`backend/phase-5-payments`** | (latest) | yes | **Phases 1–5. ← CONTINUE BACKEND WORK HERE** |
 | `frontend/refurbish` | `a637bc1` | yes (pushed at handover) | Frontend redesign: 10 commits made on the old PC (landing, shop, login, my-orders, vendor/rider/admin portals, Vercel config). Branched from `master`. |
 
 **The backend branches stack:** each phase branch was cut from the previous one, so
@@ -68,7 +69,7 @@ We fixed it with a **git worktree**. Do the same on the new PC:
 ```bash
 git clone https://github.com/ChidiAbajue/LodgeMart.git LodgeMart            # frontend folder
 cd LodgeMart
-git worktree add ../LodgeMart-backend backend/phase-4-vendor-rider          # separate backend folder
+git worktree add ../LodgeMart-backend backend/phase-5-payments          # separate backend folder
 ```
 
 - `LodgeMart/` → frontend work (`frontend/refurbish` or `master`)
@@ -87,7 +88,7 @@ Install: **Git**, **Node.js 20+** (LTS), **Docker Desktop**, **Claude Code**.
 # 1. Get the code (see worktree layout above)
 git clone https://github.com/ChidiAbajue/LodgeMart.git LodgeMart
 cd LodgeMart
-git worktree add ../LodgeMart-backend backend/phase-4-vendor-rider
+git worktree add ../LodgeMart-backend backend/phase-5-payments
 cd ../LodgeMart-backend/server
 
 # 2. Secrets file (NOT in git: create it fresh)
@@ -105,7 +106,7 @@ npm run db:seed        # loads prototype sample data
 
 # 4. Check it works
 npm run dev            # → http://localhost:4000/api/health should say {"status":"ok"}
-npm test               # expect 111 passing (4 files)
+npm test               # expect 137 passing (5 files)
 ```
 
 **Windows notes**
@@ -155,7 +156,7 @@ tests/        phase1..phase4.test.js (vitest + supertest, against the lodgemart_
 | 2 | Auth: register/login/logout/me, JWT + Redis revocation, bcrypt 12, roles, rate limits | ✅ verified, pushed |
 | 3 | Catalog, wallet orders (routing, no overselling), my orders, cancel, delegate | ✅ verified, pushed |
 | 4 | Vendor packing + inventory; rider manifest, stall pickup, hub arrival, PIN handover, earnings | ✅ verified 2026-11-28, pushed |
-| 5 | Paystack (test mode): initialize, webhook, vendor transfers; photo upload | ⬜ next |
+| 5 | Paystack (test mode): initialize, webhook, vendor transfers; photo upload | 🟨 built + 137 tests (Paystack mocked); **needs a manual run with real TEST keys** |
 | 6 | Ratings + admin summary | ⬜ |
 | 7 | API docs for Chidi, frontend wiring, deploy API (Render/Railway) | ⬜ |
 
@@ -174,20 +175,29 @@ tests/        phase1..phase4.test.js (vitest + supertest, against the lodgemart_
 
 ### Phase 4: checklist completed 2026-11-28 (audit 0, depcheck clean, no env files tracked, 111/111 tests).
 
-### Phase 5 plan (Paystack test mode + photo upload)
-Needs from the user: **Paystack TEST secret + public keys** (dashboard → Settings → API Keys, `sk_test_…`/`pk_test_…`)
-and a **Cloudinary** account URL for stall photos. Put them only in `server/.env`.
-- `POST /api/orders` with `paymentMethod: "PAYSTACK"` → create order `PENDING_PAYMENT` (stock reserved),
-  call Paystack initialize, return `authorization_url`.
-- `POST /api/payments/paystack/webhook` (public): verify `x-paystack-signature` (HMAC-SHA512 of the raw body),
-  idempotent by reference; on `charge.success` check amount = order total → `ORDER_PLACED`, `paidAt`.
-  Expire unpaid orders and release stock.
-- Vendor payouts: transfer recipient per vendor, transfer per `StallPickup` → `PAID`/`FAILED`, increment
-  `payoutBalanceKobo` on success; idempotent via `transferRef`.
-- Photo upload endpoint (Cloudinary, size/type limits); stall pickup then only accepts our Cloudinary URLs.
-- Tests mock Paystack HTTP; never call live keys.
+### Phase 5: what was done (branch `backend/phase-5-payments`)
+- **Card checkout:** `POST /api/orders` with `paymentMethod: "PAYSTACK"` → order `PENDING_PAYMENT` (stock held,
+  PIN hidden) + `payment.authorizationUrl` (send the student there). If Paystack is unreachable → 502 and stock released.
+- **Webhook** `POST /api/payments/paystack/webhook` (public, HMAC-SHA512 signature over the raw body):
+  `charge.success` → `ORDER_PLACED` only if amount + currency match; duplicates harmless; payment after
+  cancel/expiry → full refund to wallet. `transfer.success/failed/reversed` → payout status.
+- **`POST /api/orders/:id/verify-payment`** (owner): asks Paystack directly (for when the webhook is slow).
+- **Expiry:** unpaid card orders release stock after `PENDING_PAYMENT_TTL_MINUTES` (30). Timer runs in `server.js`.
+- **Vendor payouts:** `POST /api/admin/payouts/run`, `GET /api/admin/payouts?status=` (ADMIN). Flow:
+  PENDING/FAILED → PROCESSING → PAID (vendor `payoutBalanceKobo` credited once). New reference per attempt.
+- **Photos:** `GET /api/rider/photo-upload-signature` → the phone uploads straight to Cloudinary, then sends the
+  returned `secure_url` as `photoUrl`. Pickups reject photos outside `res.cloudinary.com/<our cloud>/…/lodgemart/stall-pickups/`.
+- **Safety:** a live key (`sk_live_`) is refused unless `NODE_ENV=production`. Without keys, card/uploads/payouts answer 503.
 
----
+### Phase 5: still to do before calling it ✅ (needs the user)
+1. Create a **Paystack** account → Settings → API Keys & Webhooks → copy the **Test Secret Key** (`sk_test_…`) and
+   Test Public Key into `server/.env`. Set the webhook URL (needs a public URL: use a tunnel such as
+   `cloudflared tunnel --url http://localhost:4000` or ngrok) to `<public-url>/api/payments/paystack/webhook`.
+   For payouts in test mode, **disable transfer OTP** (Settings → Preferences).
+2. Create a **Cloudinary** account → copy the "API environment variable" (`cloudinary://…`) into `CLOUDINARY_URL`.
+3. Manual run: card order → pay on the Paystack test page (test card 4084 0840 8408 4081, any future date, CVV 408,
+   PIN 0000, OTP 123456) → webhook marks it paid; run payouts; upload a photo via the signature endpoint.
+4. Mark Phase 5 ✅ in CLAUDE.md, commit, push. Then Phase 6 (ratings + admin summary).
 
 ## 6. Known gotchas
 

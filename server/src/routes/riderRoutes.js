@@ -10,6 +10,7 @@ export const riderRoutes = Router();
 riderRoutes.use(requireRole('RIDER'));
 
 riderRoutes.get('/manifest', riderController.getManifest);
+riderRoutes.get('/photo-upload-signature', staffWriteLimit, riderController.getPhotoUploadSignature);
 riderRoutes.post('/stall-pickups', staffWriteLimit, validate(stallPickupSchema), riderController.confirmStallPickup);
 riderRoutes.post('/hub-arrivals', staffWriteLimit, validate(hubArrivalSchema), riderController.markHubArrived);
 riderRoutes.post('/handover', handoverLimit, validate(handoverSchema), riderController.handover);

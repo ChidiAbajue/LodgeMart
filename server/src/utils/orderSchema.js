@@ -21,9 +21,7 @@ export const createOrderSchema = z.strictObject({
   zoneId: id,
   hubId: id,
   batchSlotId: id,
-  paymentMethod: z.enum(['WALLET'], {
-    error: 'Only WALLET payment is available for now (Paystack is coming)',
-  }),
+  paymentMethod: z.enum(['WALLET', 'PAYSTACK'], { error: 'paymentMethod must be WALLET or PAYSTACK' }),
 });
 
 export const delegateSchema = z.strictObject({

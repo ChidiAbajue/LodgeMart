@@ -66,7 +66,7 @@ ogaemeka@lodgemart.ng / mamangozi@lodgemart.ng (vendor), tunde.dispatch@lodgemar
 | 2 | Auth: register/login/logout/me, JWT, bcrypt, role + ownership middleware, Redis rate limits | ✅ Verified 2026-11-27 — 42/42 tests, manual run, 0 audit vulns |
 | 3 | Catalog + orders: server-side routing (transaction, no overselling), my orders, cancel, delegate PIN | ✅ Verified 2026-11-27 — 80/80 tests (×3 runs), manual run, 0 audit vulns |
 | 4 | Vendor + rider: packing, stall pickup (per batch), hub arrival, PIN handover (single-use, rate-limited) | ✅ Verified 2026-11-28 — 111/111 tests, manual run, 0 audit vulns |
-| 5 | Paystack (test mode): initialize, webhook (signature + idempotency), vendor transfers; photo upload | ⬜ |
+| 5 | Paystack (test mode): initialize, webhook (signature + idempotency), vendor transfers; photo upload | 🟨 Built 2026-11-28 — 137/137 tests (Paystack mocked), manual run without keys OK, 0 audit vulns. **Pending: manual run with real Paystack TEST keys + Cloudinary** |
 | 6 | Ratings + admin summary | ⬜ |
 | 7 | API docs for Chidi; frontend wiring support; deploy API (Render/Railway) | ⬜ |
 
@@ -154,3 +154,12 @@ Business constants: `server/src/config/business.js`. Batch date = today if befor
   positive), only `.env.example`/`.env.test` tracked, 111/111 tests, dev data reseeded. Note: first `db:seed` after
   Docker sat idle overnight failed with P2028 "Unable to start a transaction in the given time"; it succeeded on retry
   (nothing was holding locks).
+- **2026-11-28 — Phase 5 built** on `backend/phase-5-payments` (from phase 4). Migration `phase5_payments` (additive:
+  `PayoutStatus.PROCESSING`, `Vendor.bankCode/paystackRecipientCode`, `StallPickup.payoutAttempts/payoutFailureReason/paidAt`).
+  Card checkout (PENDING_PAYMENT holds stock → Paystack initialize; init failure releases stock), webhook
+  (HMAC-SHA512 over raw body, amount+currency check, idempotent, late payment → full wallet refund),
+  `verify-payment`, 30-min expiry timer, vendor payouts (admin run, atomic claim, new reference per attempt,
+  transfer.success/failed/reversed), Cloudinary signed direct upload + pickup photo must be in our folder.
+  Env: live `sk_live_` key refused unless NODE_ENV=production. Found+fixed during tests: duplicate transfer-recipient
+  creation when one vendor had 2 payouts; cancel-vs-payment race could cancel a just-paid order with ₦0 refund.
+  137/137 ×3. Manual (no keys): card → 503, forged webhook → 401, uploads → 503, wallet still works, no secrets in logs.
