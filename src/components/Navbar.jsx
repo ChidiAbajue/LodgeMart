@@ -50,8 +50,8 @@ export default function Navbar() {
   useMotionValueEvent(scrollY, 'change', (y) => setScrolled(y > 80));
   const dark = PHOTO_HEADER_ROUTES.includes(location.pathname) && !scrolled;
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 
@@ -118,10 +118,11 @@ export default function Navbar() {
           </nav>
 
           <div className="flex items-center gap-2.5">
-            {(!currentUser || currentUser.role === 'student') && (
+            {/* Wallet balance only for a signed-in student (never when signed out) */}
+            {currentUser?.role === 'student' && (
               <div className="hidden sm:flex items-center gap-1.5 h-9 font-display text-sm font-medium tracking-[0.06em] tabular-nums">
                 <Wallet className="w-4 h-4 text-accent-500" />
-                <span>₦{walletBalance.toLocaleString()}</span>
+                <Link to="/orders#wallet" className="hover:underline">₦{walletBalance.toLocaleString()}</Link>
               </div>
             )}
 

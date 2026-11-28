@@ -9,33 +9,51 @@ export default function DelegatePinModal({ isOpen, onClose, order }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [generatedPin, setGeneratedPin] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
   if (!isOpen || !order) return null;
 
-  const handleSubmit = (e) => {
+  const close = () => {
+    setGeneratedPin('');
+    setError('');
+    setName('');
+    setPhone('');
+    onClose();
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim() || !phone.trim()) return;
-    const newPin = delegateOrderPin(order.id, name, phone);
-    setGeneratedPin(newPin);
+    setBusy(true);
+    setError('');
+    const res = await delegateOrderPin(order.id, name, phone);
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.details?.[0]?.message || res.error);
+      return;
+    }
+    setGeneratedPin(res.pin);
   };
 
   const cleanPhone = phone.replace(/[^0-9]/g, '').replace(/^0/, '234');
   const waText = encodeURIComponent(
-    `Hey ${name}, I delegated my LodgeMart order ${order.id} (${order.pickupHub}) to you. Your 4-digit Pickup PIN is ${generatedPin}. Show it to the rider at the junction!`
+    `Hey ${name}, I delegated my LodgeMart order ${order.label} (${order.pickupHub}) to you. Your 4-digit Pickup PIN is ${generatedPin}. Show it to the rider at the junction!`
   );
   const waUrl = `https://wa.me/${cleanPhone}?text=${waText}`;
 
   return (
-    <Modal open onClose={onClose} title="Delegate pickup PIN" subtitle={`Order ${order.id} · ${order.pickupHub}`} icon={Users}>
+    <Modal open onClose={close} title="Delegate pickup PIN" subtitle={`Order ${order.label} · ${order.pickupHub}`} icon={Users}>
       {!generatedPin ? (
         <form onSubmit={handleSubmit} className="space-y-5">
           <p className="text-[0.95rem] leading-relaxed text-muted">
-            Stuck in a lecture? Assign a roommate to collect order{' '}
-            <span className="font-semibold text-ink">{order.id}</span>. Your current PIN will be invalidated immediately.
+            Can't make it to the hub? Assign a roommate to collect order{' '}
+            <span className="font-semibold text-ink">{order.label}</span>. Your current PIN will be invalidated immediately.
           </p>
           <TextField label="Roommate full name" type="text" required placeholder="e.g. Emeka" value={name} onChange={(e) => setName(e.target.value)} />
           <TextField label="WhatsApp phone number" type="tel" required placeholder="e.g. 08012345678" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          <ActionButton type="submit">Rotate PIN &amp; delegate to roommate</ActionButton>
+          {error && <p role="alert" className="rounded-md border-2 border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
+          <ActionButton type="submit" disabled={busy}>{busy ? 'Delegating...' : 'Rotate PIN & delegate to roommate'}</ActionButton>
         </form>
       ) : (
         <div className="space-y-6 text-center">

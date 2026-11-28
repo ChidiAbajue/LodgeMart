@@ -4,12 +4,14 @@ import { Star, AlertTriangle } from 'lucide-react';
 import { useLodgeMart } from '../context/LodgeMartContext';
 import Modal, { ActionButton } from './ui/Modal';
 
-const ISSUE_TAGS = ['Short Measure', 'Weevils/Dusty', 'Damaged Pack'];
+const ISSUE_TAGS = ['Short measure', 'Weevils / Dusty', 'Damaged pack', 'Missing item'];
 
 export default function ItemRatingModal({ isOpen, onClose, order, items }) {
   const { submitOrderRating } = useLodgeMart();
   const [stars, setStars] = useState(5);
   const [flaggedItems, setFlaggedItems] = useState({});
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
   if (!isOpen || !order) return null;
 
@@ -29,13 +31,26 @@ export default function ItemRatingModal({ isOpen, onClose, order, items }) {
     setFlaggedItems((prev) => ({ ...prev, [itemId]: tag }));
   };
 
-  const handleSubmit = () => {
-    submitOrderRating(order.id, stars, flaggedItems);
+  const handleSubmit = async () => {
+    if (stars <= 3 && Object.keys(flaggedItems).length === 0) {
+      setError('For 1–3 stars, tick the item(s) that had a problem so only that stall is affected.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    const res = await submitOrderRating(order.id, stars, flaggedItems);
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setStars(5);
+    setFlaggedItems({});
     onClose();
   };
 
   return (
-    <Modal open onClose={onClose} title="Rate your batch order" subtitle={`Order ${order.id} · Blind vendor quality`} icon={Star}>
+    <Modal open onClose={onClose} title="Rate your batch order" subtitle={`Order ${order.label} · Blind vendor quality`} icon={Star}>
       <div className="space-y-6">
         <div className="text-center">
           <p className="text-[0.95rem] font-semibold text-ink">How was the quality &amp; measure of your items?</p>
@@ -64,7 +79,9 @@ export default function ItemRatingModal({ isOpen, onClose, order, items }) {
           </div>
           <p className="mt-2 text-sm text-muted">
             {stars >= 4
-              ? '4–5 stars credits all fulfilling stalls equally.'
+              ? stars === 5
+                ? 'Everything was great! 5 stars credits every stall that filled your order.'
+                : '4–5 stars credits all fulfilling stalls equally.'
               : '1–3 stars: select only the specific item(s) with an issue.'}
           </p>
         </div>
@@ -121,7 +138,11 @@ export default function ItemRatingModal({ isOpen, onClose, order, items }) {
           )}
         </AnimatePresence>
 
-        <ActionButton onClick={handleSubmit}>Submit blind quality rating</ActionButton>
+        {stars <= 3 && (
+          <p className="text-sm text-muted">Flagging an item earns you a bad-batch replacement credit.</p>
+        )}
+        {error && <p role="alert" className="rounded-md border-2 border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
+        <ActionButton onClick={handleSubmit} disabled={busy}>{busy ? 'Submitting...' : 'Submit blind quality rating'}</ActionButton>
       </div>
     </Modal>
   );

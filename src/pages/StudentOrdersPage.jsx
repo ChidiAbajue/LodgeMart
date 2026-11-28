@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { KeyRound, Users, Star, MapPin, CheckCircle2, ShoppingBasket, XCircle, Check } from 'lucide-react';
+import { KeyRound, Users, Star, MapPin, CheckCircle2, ShoppingBasket, XCircle, Check, Wallet, Landmark, Gift, Store, Lock, Clock } from 'lucide-react';
 import { useLodgeMart } from '../context/LodgeMartContext';
+import VirtualAccountForm from '../components/VirtualAccountForm';
+import { prettyDate } from '../lib/adapters';
 import { getProductImage } from '../data/productImages';
 import DelegatePinModal from '../components/DelegatePinModal';
 import ItemRatingModal from '../components/ItemRatingModal';
@@ -74,21 +76,83 @@ function DarkAction({ onClick, icon: Icon, children, tone = 'light' }) {
   );
 }
 
+function WalletPanel() {
+  const { wallet, walletBalance, refreshWallet } = useLodgeMart();
+  const [showForm, setShowForm] = useState(false);
+  const va = wallet?.virtualAccount;
+  return (
+    <section id="wallet" className="scroll-mt-24 overflow-hidden rounded-lg bg-white shadow-[0_10px_30px_-18px_rgb(0_0_0/0.35)]">
+      <div className="flex flex-wrap items-center justify-between gap-4 bg-brand-700 px-6 py-5 text-white">
+        <div className="flex items-center gap-3">
+          <Wallet className="h-6 w-6 text-accent-400" />
+          <div>
+            <p className="font-display text-xs uppercase tracking-[0.2em] text-white/60">LodgeMart Wallet · Monnify</p>
+            <p className="font-display text-4xl font-semibold tabular-nums">₦{walletBalance.toLocaleString()}</p>
+          </div>
+        </div>
+        <button onClick={refreshWallet} className="h-10 rounded-md border-2 border-white/60 px-4 font-display text-xs uppercase tracking-[0.14em] transition-colors hover:bg-white hover:text-ink cursor-pointer">
+          Refresh balance
+        </button>
+      </div>
+      <div className="px-6 py-5 text-sm text-muted">
+        {va ? (
+          <p>
+            Top up by bank transfer to <span className="font-display text-lg font-semibold tracking-[0.1em] text-ink">{va.accountNumber}</span>{' '}
+            — {va.bankName} ({va.accountName}). Money arrives in your wallet automatically.
+            <span className="mt-1 block text-xs">Funds held safely in your personal Moniepoint virtual bank account.</span>
+          </p>
+        ) : wallet?.fundingAvailable ? (
+          showForm ? (
+            <VirtualAccountForm onDone={() => setShowForm(false)} />
+          ) : (
+            <button onClick={() => setShowForm(true)} className="font-semibold text-accent-700 underline-offset-4 hover:underline cursor-pointer">
+              Get your personal Moniepoint account number to top up your wallet
+            </button>
+          )
+        ) : (
+          <p>Wallet top-ups are not available yet on this server.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function StudentOrdersPage() {
-  const { currentUser, orders, orderItems, cancelOrder } = useLodgeMart();
+  const { orders, refreshOrders, cancelOrder, verifyPayment } = useLodgeMart();
   const [delegateOrder, setDelegateOrder] = useState(null);
   const [ratingOrder, setRatingOrder] = useState(null);
-  const [cancelNotice, setCancelNotice] = useState('');
+  const [notice, setNotice] = useState('');
+  const [busyId, setBusyId] = useState('');
 
-  const myOrders = orders.filter((o) => !currentUser?.email || o.studentEmail === currentUser.email);
+  useEffect(() => {
+    refreshOrders().catch(() => {});
+    const t = setInterval(() => refreshOrders().catch(() => {}), 30_000); // live status
+    return () => clearInterval(t);
+  }, [refreshOrders]);
 
-  const handleCancel = (orderId) => {
-    const res = cancelOrder(orderId);
-    if (res.ok) {
-      setCancelNotice(
-        `Order ${orderId} cancelled. ₦${res.refundAmount.toLocaleString()} refunded to your wallet (₦${res.fee} cancellation fee).`
-      );
-    }
+  const myOrders = orders;
+
+  const handleCancel = async (order) => {
+    if (!window.confirm(`Cancel order ${order.label}?`)) return;
+    setBusyId(order.id);
+    const res = await cancelOrder(order.id);
+    setBusyId('');
+    setNotice(
+      res.ok
+        ? res.refundAmount > 0
+          ? `Order ${order.label} cancelled. ₦${res.refundAmount.toLocaleString()} refunded to your wallet (₦${res.fee.toLocaleString()} cancellation fee).`
+          : `Order ${order.label} cancelled. Nothing was charged.`
+        : res.error,
+    );
+  };
+
+  const handleVerify = async (order) => {
+    setBusyId(order.id);
+    const res = await verifyPayment(order.id);
+    setBusyId('');
+    if (!res.ok) setNotice(res.error);
+    else if (res.order.statusCode === 'PENDING_PAYMENT') setNotice(`We haven't received the transfer for ${order.label} yet. Try again in a minute.`);
+    else setNotice(`Transfer received — order ${order.label} is confirmed.`);
   };
 
   return (
@@ -104,16 +168,18 @@ export default function StudentOrdersPage() {
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-10 space-y-6">
         <AnimatePresence>
-          {cancelNotice && (
+          {notice && (
             <motion.p
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               className="rounded-md border-l-4 border-accent-500 bg-white px-5 py-4 text-sm font-semibold text-ink shadow-[0_6px_20px_-12px_rgb(0_0_0/0.3)]"
             >
-              {cancelNotice}
+              {notice}
             </motion.p>
           )}
         </AnimatePresence>
+
+        <WalletPanel />
 
         {myOrders.length === 0 ? (
           <div className="rounded-lg bg-white p-12 text-center">
@@ -123,17 +189,24 @@ export default function StudentOrdersPage() {
           </div>
         ) : (
           myOrders.map((order) => {
-            const items = orderItems.filter((i) => i.orderId === order.id);
-            const open = order.status === 'Order Placed' || order.status === 'Packed at Market';
-            const moving = order.status === 'Rider In Transit' || order.status === 'Ready at Hub';
-            const cancelled = order.status === 'Cancelled';
+            const items = order.items;
+            const code = order.statusCode;
+            const awaitingTransfer = code === 'PENDING_PAYMENT';
+            const open = code === 'ORDER_PLACED' || code === 'PACKED_AT_MARKET';
+            // Cancelling stops at the batch cutoff (3 PM): the batch is then with the vendors.
+            const cancellable = open && !order.batchLocked;
+            const moving = code === 'RIDER_IN_TRANSIT' || code === 'READY_AT_HUB';
+            const cancelled = code === 'CANCELLED';
+            const atKiosk = code === 'LEFT_AT_KIOSK';
+            const done = code === 'COLLECTED' || atKiosk;
+            const busy = busyId === order.id;
             return (
               <Reveal key={order.id} as="article" className="overflow-hidden rounded-lg bg-white shadow-[0_10px_30px_-18px_rgb(0_0_0/0.35)]">
                 {/* Header */}
                 <div className="flex flex-wrap items-start justify-between gap-4 px-6 pt-6">
                   <div>
                     <div className="flex flex-wrap items-center gap-2.5">
-                      <h2 className="font-display text-3xl font-semibold uppercase text-ink">Order {order.id}</h2>
+                      <h2 className="font-display text-3xl font-semibold uppercase text-ink">Order {order.label}</h2>
                       <span
                         className={`rounded px-2.5 py-1 font-display text-[11px] font-medium uppercase tracking-[0.12em] ${
                           cancelled ? 'bg-red-100 text-red-700' : 'bg-accent-500 text-ink'
@@ -141,6 +214,11 @@ export default function StudentOrdersPage() {
                       >
                         {order.status}
                       </span>
+                      {order.replacementCredit && (
+                        <span className="flex items-center gap-1 rounded bg-brand-50 px-2.5 py-1 font-display text-[11px] font-medium uppercase tracking-[0.12em] text-brand-700">
+                          <Gift className="h-3.5 w-3.5" /> Replacement credit
+                        </span>
+                      )}
                       {order.delegateInfo?.active && (
                         <span className="rounded bg-brand-700 px-2.5 py-1 font-display text-[11px] font-medium uppercase tracking-[0.12em] text-white">
                           Delegated to {order.delegateInfo.name}
@@ -149,7 +227,7 @@ export default function StudentOrdersPage() {
                     </div>
                     <p className="mt-2 flex items-start gap-1.5 text-sm text-muted">
                       <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-accent-600" />
-                      {order.campusZone} · {order.pickupHub} · {order.batchSlot}
+                      {order.campusZone} · {order.pickupHub} · {order.batchSlot} · {prettyDate(order.batchDate)}
                     </p>
                   </div>
                   <div className="text-right">
@@ -159,14 +237,39 @@ export default function StudentOrdersPage() {
                 </div>
 
                 {/* Timeline */}
-                {!cancelled && (
+                {!cancelled && !awaitingTransfer && (
                   <div className="px-6 pt-7">
-                    <Timeline status={order.status} />
+                    <Timeline status={atKiosk ? 'Collected' : order.status} />
                   </div>
+                )}
+                {cancellable && (
+                  <p className="mx-6 mt-5 flex items-center gap-2 rounded-md bg-canvas px-4 py-3 text-sm text-ink">
+                    <Clock className="h-4 w-4 shrink-0 text-accent-700" />
+                    You can cancel until {order.cutoff} on {prettyDate(order.batchDate)}. After that the batch goes to the vendors to pack.
+                  </p>
+                )}
+                {open && order.batchLocked && (
+                  <p className="mx-6 mt-5 flex items-center gap-2 rounded-md bg-canvas px-4 py-3 text-sm text-ink">
+                    <Lock className="h-4 w-4 shrink-0 text-accent-700" />
+                    Locked at {order.cutoff}: your batch is with the vendors, so this order can no longer be cancelled.
+                  </p>
+                )}
+                {atKiosk && (
+                  <p className="mx-6 mt-5 flex items-center gap-2 rounded-md bg-accent-50 px-4 py-3 text-sm font-semibold text-ink">
+                    <Store className="h-4 w-4 text-accent-700" /> Your bag is waiting at the partnered junction kiosk — collect it with your PIN.
+                  </p>
                 )}
 
                 {/* PIN band */}
                 <div className="mt-7 flex flex-wrap items-center justify-between gap-5 bg-ink px-6 py-5 text-white">
+                  {awaitingTransfer ? (
+                    <div className="flex items-center gap-4">
+                      <Landmark className="h-6 w-6 text-accent-400" />
+                      <p className="max-w-xs text-sm text-white/80">
+                        Waiting for your bank transfer. Your PIN appears once Monnify confirms it.
+                      </p>
+                    </div>
+                  ) : order.pickupPin ? (
                   <div className="flex items-center gap-4">
                     <KeyRound className="h-6 w-6 text-accent-400" />
                     <div>
@@ -191,16 +294,25 @@ export default function StudentOrdersPage() {
                       </div>
                     </div>
                   </div>
+                  ) : (
+                    <p className="text-sm text-white/70">{cancelled ? 'This order was cancelled.' : 'Delivered.'}</p>
+                  )}
 
                   <div className="flex flex-wrap items-center gap-2.5">
-                    {open && (
+                    {awaitingTransfer && (
                       <>
-                        <DarkAction onClick={() => setDelegateOrder(order)} icon={Users}>Delegate pickup</DarkAction>
-                        <DarkAction onClick={() => handleCancel(order.id)} icon={XCircle} tone="danger">Cancel (₦200 fee)</DarkAction>
+                        <DarkAction onClick={() => handleVerify(order)} icon={Landmark} tone="accent">
+                          {busy ? 'Checking...' : 'I have sent the transfer'}
+                        </DarkAction>
+                        <DarkAction onClick={() => handleCancel(order)} icon={XCircle} tone="danger">Cancel</DarkAction>
                       </>
                     )}
+                    {open && <DarkAction onClick={() => setDelegateOrder(order)} icon={Users}>Delegate pickup</DarkAction>}
+                    {cancellable && (
+                      <DarkAction onClick={() => handleCancel(order)} icon={XCircle} tone="danger">{busy ? 'Cancelling...' : 'Cancel (₦200 fee)'}</DarkAction>
+                    )}
                     {moving && <DarkAction onClick={() => setDelegateOrder(order)} icon={Users}>Delegate pickup</DarkAction>}
-                    {order.status === 'Collected' && !order.rated && (
+                    {done && !order.rated && (
                       <DarkAction onClick={() => setRatingOrder(order)} icon={Star} tone="accent">Rate order</DarkAction>
                     )}
                     {order.rated && (
@@ -226,6 +338,11 @@ export default function StudentOrdersPage() {
                         </span>
                         <span className="flex-1 text-sm font-semibold text-ink">
                           {item.qty}× {item.productName}
+                          {item.refunded && (
+                            <span className="mt-0.5 block text-xs font-normal text-brand-700">
+                              Price spike at market — ₦{item.refundAmount?.toLocaleString()} refunded to your wallet
+                            </span>
+                          )}
                         </span>
                         <span className="pr-1.5 font-display text-base font-medium text-ink tabular-nums">
                           ₦{(item.studentPrice * item.qty).toLocaleString()}
@@ -246,7 +363,7 @@ export default function StudentOrdersPage() {
         isOpen={Boolean(ratingOrder)}
         onClose={() => setRatingOrder(null)}
         order={ratingOrder}
-        items={ratingOrder ? orderItems.filter((i) => i.orderId === ratingOrder.id) : []}
+        items={ratingOrder ? ratingOrder.items.filter((i) => !i.refunded) : []}
       />
     </div>
   );

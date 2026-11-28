@@ -13,7 +13,8 @@ import RiderPortalPage from './pages/RiderPortalPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 
 function RequireRole({ allowedRoles, children }) {
-  const { currentUser } = useLodgeMart();
+  const { currentUser, authReady } = useLodgeMart();
+  if (!authReady) return <div className="min-h-screen bg-canvas" aria-busy="true" />; // restoring session
   if (!currentUser) {
     return <Navigate to="/login" replace />;
   }

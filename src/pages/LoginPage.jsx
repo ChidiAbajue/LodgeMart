@@ -1,12 +1,23 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion } from 'motion/react';
-import { Lock, Mail, Loader2, ArrowRight } from 'lucide-react';
-import { SANDBOX_ACCOUNTS } from '../data/seedData';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
+import { Lock, Mail, Loader2, ArrowRight, User, Phone } from 'lucide-react';
 import { useLodgeMart } from '../context/LodgeMartContext';
 
 const SNAP = [0.7, 0, 0.2, 1];
 const OUT = [0.16, 1, 0.3, 1];
+
+// Sandbox accounts exist only on a local / staging server loaded with sample
+// data (npm run db:seed). Shown in dev, or when VITE_SANDBOX_LOGINS=true.
+const SHOW_SANDBOX = import.meta.env.DEV || import.meta.env.VITE_SANDBOX_LOGINS === 'true';
+const SANDBOX_PASSWORD = 'password123';
+const SANDBOX_ACCOUNTS = [
+  { email: 'chinedu.unizik@gmail.com', role: 'student', subtitle: 'Student — UNIZIK Ifite' },
+  { email: 'ogaemeka@lodgemart.ng', role: 'vendor', subtitle: 'Vendor — Oga Emeka, Eke Awka (Stall B-14)' },
+  { email: 'mamangozi@lodgemart.ng', role: 'vendor', subtitle: 'Vendor — Mama Ngozi, Eke Awka (Stall C-08)' },
+  { email: 'tunde.dispatch@lodgemart.ng', role: 'rider', subtitle: 'Rider — Ifite Route' },
+  { email: 'ops@lodgemart.ng', role: 'admin', subtitle: 'Admin — LodgeMart Ops' },
+];
 
 function Field({ label, icon: Icon, ...props }) {
   return (
@@ -24,38 +35,51 @@ function Field({ label, icon: Icon, ...props }) {
 }
 
 export default function LoginPage() {
-  const { login } = useLodgeMart();
+  const { login, register } = useLodgeMart();
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = location.state?.from;
 
+  const [mode, setMode] = useState('signin'); // 'signin' | 'signup'
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const performLogin = (targetEmail, targetPassword) => {
-    setError('');
-    setLoading(true);
-    setTimeout(() => {
-      const res = login(targetEmail, targetPassword);
-      setLoading(false);
-      if (!res.ok) {
-        setError(res.error);
-        return;
-      }
-      navigate(res.user.homeRoute);
-    }, 400);
+  const finish = (res) => {
+    setLoading(false);
+    if (!res.ok) {
+      const field = res.details?.[0]?.message;
+      setError(field && res.code === 'VALIDATION_ERROR' ? field : res.error);
+      return;
+    }
+    navigate(returnTo && res.user.role === 'student' ? returnTo : res.user.homeRoute);
   };
 
-  const handleSubmit = (e) => {
+  const performLogin = async (targetEmail, targetPassword) => {
+    setError('');
+    setLoading(true);
+    finish(await login(targetEmail, targetPassword));
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    performLogin(email, password);
+    if (mode === 'signin') return performLogin(email, password);
+    setError('');
+    setLoading(true);
+    finish(await register({ name, email, phone, password }));
   };
 
   const handleQuickFill = (account) => {
+    setMode('signin');
     setEmail(account.email);
-    setPassword(account.password);
-    performLogin(account.email, account.password);
+    setPassword(SANDBOX_PASSWORD);
+    performLogin(account.email, SANDBOX_PASSWORD);
   };
+
+  const signup = mode === 'signup';
 
   return (
     <div className="grid min-h-[calc(100svh-4rem)] bg-canvas lg:grid-cols-2">
@@ -88,36 +112,41 @@ export default function LoginPage() {
 
       {/* Form panel */}
       <div className="flex items-center justify-center px-4 py-12 sm:px-10">
-        <motion.div
-          className="w-full max-w-md"
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, ease: OUT }}
-        >
-          <p className="font-display text-xs font-medium uppercase tracking-[0.3em] text-accent-700">Portal sign in</p>
-          <h1 className="mt-3 font-display text-5xl font-semibold uppercase leading-none text-ink">Sign in to LodgeMart</h1>
+        <motion.div className="w-full max-w-md" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: OUT }}>
+          <p className="font-display text-xs font-medium uppercase tracking-[0.3em] text-accent-700">
+            {signup ? 'Student sign up' : 'Portal sign in'}
+          </p>
+          <h1 className="mt-3 font-display text-5xl font-semibold uppercase leading-none text-ink">
+            {signup ? 'Create your account' : 'Sign in to LodgeMart'}
+          </h1>
           <p className="mt-3 text-muted lg:hidden">UNIZIK Campus Batch Foodstuff &amp; Operations Platform</p>
 
           <form onSubmit={handleSubmit} className="mt-9 space-y-5">
-            <Field
-              label="Email address"
-              icon={Mail}
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@unizik.edu.ng"
-              autoComplete="email"
-            />
+            <AnimatePresence initial={false}>
+              {signup && (
+                <motion.div
+                  key="signup-fields"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="space-y-5 overflow-hidden"
+                >
+                  <Field label="Full name" icon={User} type="text" required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Chinedu Okafor" autoComplete="name" />
+                  <Field label="Phone (optional)" icon={Phone} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="e.g. 08031234567" autoComplete="tel" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <Field label="Email address" icon={Mail} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@unizik.edu.ng" autoComplete="email" />
             <Field
               label="Password"
               icon={Lock}
               type="password"
               required
+              minLength={signup ? 8 : undefined}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
+              placeholder={signup ? 'At least 8 characters' : '••••••••'}
+              autoComplete={signup ? 'new-password' : 'current-password'}
             />
 
             {error && (
@@ -140,48 +169,64 @@ export default function LoginPage() {
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Signing in...</span>
+                  <span>{signup ? 'Creating account...' : 'Signing in...'}</span>
                 </>
               ) : (
                 <>
-                  <span>Sign in</span>
+                  <span>{signup ? 'Create account' : 'Sign in'}</span>
                   <ArrowRight className="h-4 w-4" />
                 </>
               )}
             </button>
+
+            <p className="text-center text-sm text-muted">
+              {signup ? 'Already have an account?' : 'New to LodgeMart?'}{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode(signup ? 'signin' : 'signup');
+                  setError('');
+                }}
+                className="font-semibold text-accent-700 underline-offset-4 hover:underline cursor-pointer"
+              >
+                {signup ? 'Sign in' : 'Create a student account'}
+              </button>
+            </p>
           </form>
 
-          <div className="mt-10">
-            <p className="flex items-center gap-3 font-display text-xs font-medium uppercase tracking-[0.2em] text-muted">
-              <span className="h-px flex-1 bg-ink/10" />
-              Quick sign-in (sandbox accounts)
-              <span className="h-px flex-1 bg-ink/10" />
-            </p>
-            <div className="mt-4 grid gap-2.5">
-              {SANDBOX_ACCOUNTS.map((acc, i) => (
-                <motion.button
-                  key={acc.email}
-                  type="button"
-                  disabled={loading}
-                  onClick={() => handleQuickFill(acc)}
-                  initial={{ opacity: 0, x: 24 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.5, ease: OUT, delay: 0.25 + i * 0.07 }}
-                  className="group relative flex w-full items-center justify-between overflow-hidden rounded-md border-2 border-ink/10 bg-white px-4 py-3 text-left transition-colors duration-300 hover:border-ink cursor-pointer"
-                >
-                  <span className="absolute inset-y-0 left-0 w-1 origin-bottom scale-y-0 bg-accent-500 transition-transform duration-300 group-hover:scale-y-100" />
-                  <span>
-                    <span className="block text-sm font-semibold text-ink">{acc.email}</span>
-                    <span className="block text-sm text-muted">{acc.subtitle}</span>
-                  </span>
-                  <span className="flex items-center gap-1.5 font-display text-xs font-medium uppercase tracking-[0.14em] text-accent-700">
-                    {acc.role}
-                    <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-1" />
-                  </span>
-                </motion.button>
-              ))}
+          {SHOW_SANDBOX && !signup && (
+            <div className="mt-10">
+              <p className="flex items-center gap-3 font-display text-xs font-medium uppercase tracking-[0.2em] text-muted">
+                <span className="h-px flex-1 bg-ink/10" />
+                Quick sign-in (sandbox accounts)
+                <span className="h-px flex-1 bg-ink/10" />
+              </p>
+              <div className="mt-4 grid gap-2.5">
+                {SANDBOX_ACCOUNTS.map((acc, i) => (
+                  <motion.button
+                    key={acc.email}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => handleQuickFill(acc)}
+                    initial={{ opacity: 0, x: 24 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.5, ease: OUT, delay: 0.25 + i * 0.07 }}
+                    className="group relative flex w-full items-center justify-between overflow-hidden rounded-md border-2 border-ink/10 bg-white px-4 py-3 text-left transition-colors duration-300 hover:border-ink cursor-pointer"
+                  >
+                    <span className="absolute inset-y-0 left-0 w-1 origin-bottom scale-y-0 bg-accent-500 transition-transform duration-300 group-hover:scale-y-100" />
+                    <span>
+                      <span className="block text-sm font-semibold text-ink">{acc.email}</span>
+                      <span className="block text-sm text-muted">{acc.subtitle}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5 font-display text-xs font-medium uppercase tracking-[0.14em] text-accent-700">
+                      {acc.role}
+                      <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-1" />
+                    </span>
+                  </motion.button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </motion.div>
       </div>
     </div>

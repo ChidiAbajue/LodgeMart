@@ -1,639 +1,335 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import {
-  CAMPUS_ZONES,
-  BATCH_SLOTS,
-  calculateDeliveryFee,
-  RIDER_COMMISSION,
-  INITIAL_WALLET_BALANCE,
-  SANDBOX_ACCOUNTS,
-  INITIAL_PRODUCTS,
-  INITIAL_VENDORS,
-  INITIAL_ORDERS,
-  INITIAL_ORDER_ITEMS,
-} from '../data/seedData';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { api, hasToken, onUnauthorized, setToken } from '../lib/api';
+import { adaptCatalog, adaptOrder, adaptUser, toNaira } from '../lib/adapters';
+
+// App-wide state, backed by the LodgeMart API (server/). Prices, totals, PINs
+// and order statuses always come from the server; the basket lives on the
+// device until checkout. Vendor / rider / admin pages load their own data.
 
 const LodgeMartContext = createContext(null);
+const CART_KEY = 'lodgemart_cart_v2';
+const DROP_KEY = 'lodgemart_dropoff_v2';
 
-const STORAGE_KEY = 'lodgemart_state_v1';
-const USER_STORAGE_KEY = 'lodgemart_user_v1';
-
-const getInitialState = () => {
+const readJson = (key, fallback) => {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved);
-    }
-  } catch (e) {
-    console.error('Failed to parse saved LodgeMart state:', e);
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
   }
-  return {
-    products: INITIAL_PRODUCTS,
-    vendors: INITIAL_VENDORS,
-    orders: INITIAL_ORDERS,
-    orderItems: INITIAL_ORDER_ITEMS,
-    stallPickups: [],
-    hubArrivals: {},
-    walletBalance: INITIAL_WALLET_BALANCE,
-    riderEarnings: 0,
-    nextOrderNum: 4083,
-  };
+};
+const writeJson = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage unavailable: keep it in memory */
+  }
 };
 
-const getInitialUser = () => {
-  try {
-    const saved = localStorage.getItem(USER_STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved);
-    }
-  } catch (e) {
-    console.error('Failed to parse saved user:', e);
-  }
-  return null;
-};
+const fail = (err) => ({ ok: false, error: err.message, code: err.code, details: err.details });
 
 export function LodgeMartProvider({ children }) {
-  const [state, setState] = useState(getInitialState);
-  const [currentUser, setCurrentUser] = useState(getInitialUser);
-  const [selectedZone, setSelectedZone] = useState(CAMPUS_ZONES[0].name);
-  const [selectedHub, setSelectedHub] = useState(CAMPUS_ZONES[0].hubs[0]);
-  const [selectedBatchSlot, setSelectedBatchSlot] = useState(
-    `${BATCH_SLOTS[1].label} (${BATCH_SLOTS[1].time})`
-  );
-  const [cart, setCart] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authReady, setAuthReady] = useState(!hasToken());
+  const [catalog, setCatalog] = useState(null);
+  const [catalogError, setCatalogError] = useState('');
+  const [cart, setCart] = useState(() => readJson(CART_KEY, []));
+  const [dropoff, setDropoff] = useState(() => readJson(DROP_KEY, { zoneId: '', hubId: '', slotId: 'evening' }));
+  const [wallet, setWallet] = useState(null); // { balance, virtualAccount, fundingAvailable, recentFundings }
+  const [orders, setOrders] = useState([]);
 
-  useEffect(() => {
+  useEffect(() => writeJson(CART_KEY, cart), [cart]);
+  useEffect(() => writeJson(DROP_KEY, dropoff), [dropoff]);
+
+  // ---- catalog ---------------------------------------------------------------
+  const refreshCatalog = useCallback(async () => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) {
-      console.error('Failed to persist LodgeMart state:', e);
+      const data = adaptCatalog(await api('/catalog'));
+      setCatalog(data);
+      setCatalogError('');
+      setDropoff((d) => {
+        const zone = data.zones.find((z) => z.id === d.zoneId) || data.zones[0];
+        const hub = zone?.hubs.find((h) => h.id === d.hubId) || zone?.hubs[0];
+        const slot = data.slots.find((s) => s.id === d.slotId) || data.slots[0];
+        return { zoneId: zone?.id || '', hubId: hub?.id || '', slotId: slot?.id || '' };
+      });
+    } catch (err) {
+      setCatalogError(err.message);
     }
-  }, [state]);
-
+  }, []);
   useEffect(() => {
-    try {
-      if (currentUser) {
-        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(currentUser));
-      } else {
-        localStorage.removeItem(USER_STORAGE_KEY);
-      }
-    } catch (e) {
-      console.error('Failed to persist user session:', e);
-    }
-  }, [currentUser]);
+    refreshCatalog();
+  }, [refreshCatalog]);
 
-  const login = (email, password) => {
-    const account = SANDBOX_ACCOUNTS.find(
-      (acc) => acc.email.toLowerCase() === email.trim().toLowerCase()
-    );
-    if (!account) {
-      return { ok: false, error: 'Account not found. Check your email or use Developer Sandbox.' };
-    }
-    if (password !== account.password) {
-      return { ok: false, error: 'Incorrect password.' };
-    }
-    setCurrentUser(account);
-    if (account.campusZone) setSelectedZone(account.campusZone);
-    if (account.pickupHub) setSelectedHub(account.pickupHub);
-    return { ok: true, user: account };
-  };
-
-  const logout = () => {
+  // ---- session ---------------------------------------------------------------
+  const clearSession = useCallback(() => {
     setCurrentUser(null);
-  };
+    setWallet(null);
+    setOrders([]);
+  }, []);
+  useEffect(() => onUnauthorized(clearSession), [clearSession]);
 
-  const handleZoneChange = (zoneName) => {
-    setSelectedZone(zoneName);
-    const zoneObj = CAMPUS_ZONES.find((z) => z.name === zoneName);
-    if (zoneObj && !zoneObj.hubs.includes(selectedHub)) {
-      setSelectedHub(zoneObj.hubs[0]);
+  const refreshWallet = useCallback(async () => {
+    try {
+      const w = await api('/wallet');
+      setWallet({
+        balance: toNaira(w.balanceKobo),
+        virtualAccount: w.virtualAccount,
+        fundingAvailable: w.fundingAvailable,
+        recentFundings: (w.recentFundings || []).map((f) => ({ amount: toNaira(f.amountKobo), createdAt: f.createdAt })),
+      });
+    } catch {
+      /* shown as unavailable */
     }
-  };
+  }, []);
 
-  const addToCart = (productId, qty = 1) => {
-    setCart((prev) => {
-      const existing = prev.find((item) => item.productId === productId);
-      if (existing) {
-        return prev.map((item) =>
-          item.productId === productId ? { ...item, qty: item.qty + qty } : item
-        );
+  const refreshOrders = useCallback(async () => {
+    const { orders: list } = await api('/orders');
+    setOrders(list.map(adaptOrder));
+    return list;
+  }, []);
+
+  const loadStudentData = useCallback(async () => {
+    await Promise.allSettled([refreshWallet(), refreshOrders()]);
+  }, [refreshOrders, refreshWallet]);
+
+  const applyUser = useCallback(
+    (apiUser) => {
+      const u = adaptUser(apiUser);
+      setCurrentUser(u);
+      if (u.role === 'student') {
+        if (u.defaultZoneId) setDropoff((d) => ({ ...d, zoneId: u.defaultZoneId, hubId: u.defaultHubId || d.hubId }));
+        loadStudentData();
       }
+      return u;
+    },
+    [loadStudentData],
+  );
+
+  useEffect(() => {
+    if (!hasToken()) return;
+    api('/auth/me')
+      .then(({ user }) => applyUser(user))
+      .catch(() => setToken(null))
+      .finally(() => setAuthReady(true));
+  }, [applyUser]);
+
+  const login = useCallback(
+    async (email, password) => {
+      try {
+        const { token, user } = await api('/auth/login', { method: 'POST', body: { email, password } });
+        setToken(token);
+        return { ok: true, user: applyUser(user) };
+      } catch (err) {
+        return fail(err);
+      }
+    },
+    [applyUser],
+  );
+
+  const register = useCallback(
+    async ({ name, email, phone, password }) => {
+      try {
+        const body = { name, email, password, ...(phone && { phone }) };
+        const { token, user } = await api('/auth/register', { method: 'POST', body });
+        setToken(token);
+        return { ok: true, user: applyUser(user) };
+      } catch (err) {
+        return fail(err);
+      }
+    },
+    [applyUser],
+  );
+
+  const logout = useCallback(async () => {
+    try {
+      await api('/auth/logout', { method: 'POST' });
+    } catch {
+      /* token may already be gone */
+    }
+    setToken(null);
+    clearSession();
+  }, [clearSession]);
+
+  // ---- basket & drop-off -------------------------------------------------------
+  const addToCart = useCallback((productId, qty = 1) => {
+    setCart((prev) => {
+      const existing = prev.find((i) => i.productId === productId);
+      if (existing) return prev.map((i) => (i.productId === productId ? { ...i, qty: Math.min(50, i.qty + qty) } : i));
       return [...prev, { productId, qty }];
     });
-  };
-
-  const updateCartQty = (productId, qty) => {
-    if (qty <= 0) {
-      setCart((prev) => prev.filter((item) => item.productId !== productId));
-      return;
-    }
+  }, []);
+  const updateCartQty = useCallback((productId, qty) => {
     setCart((prev) =>
-      prev.map((item) => (item.productId === productId ? { ...item, qty } : item))
+      qty <= 0 ? prev.filter((i) => i.productId !== productId) : prev.map((i) => (i.productId === productId ? { ...i, qty: Math.min(50, qty) } : i)),
     );
-  };
+  }, []);
+  const clearCart = useCallback(() => setCart([]), []);
 
-  const clearCart = () => setCart([]);
-
-  /**
-   * Automated Line-Item Routing Algorithm:
-   * 1. Single-Stop Basket Preference (active vendor with ratingScore >= 3.5 & stock for all items)
-   * 2. Split-Stall Fallback & Load Balancing (highest-rated active vendor with stock & lowest wholesalePrice)
-   * 3. Bag Merge Flagging (requiresBagMerge = true when 2+ distinct vendors assigned)
-   */
-  const createOrder = ({ paymentMethod, paymentRef, batchSlot }) => {
-    if (cart.length === 0) {
-      return { ok: false, error: 'Your basket is empty.' };
-    }
-
-    const activeVendors = state.vendors.filter((v) => v.ratingScore >= 3.5);
-    const orderId = `#${state.nextOrderNum}`;
-    const pickupPin = String(Math.floor(1000 + Math.random() * 9000));
-
-    // Step 1: Check Single-Stop Basket Preference
-    const singleStopCandidates = activeVendors.filter((vendor) =>
-      cart.every((cartItem) => {
-        const inv = vendor.inventory[cartItem.productId];
-        return inv && inv.stockQty >= cartItem.qty;
-      })
-    );
-
-    let chosenSingleVendor = null;
-    if (singleStopCandidates.length > 0) {
-      singleStopCandidates.sort((a, b) => b.ratingScore - a.ratingScore);
-      chosenSingleVendor = singleStopCandidates[0];
-    }
-
-    const newOrderItems = [];
-    const updatedVendors = state.vendors.map((v) => ({
-      ...v,
-      inventory: { ...v.inventory },
-    }));
-
-    for (let idx = 0; idx < cart.length; idx++) {
-      const cartItem = cart[idx];
-      const product = state.products.find((p) => p.id === cartItem.productId);
-      if (!product) continue;
-
-      let assignedVendor = chosenSingleVendor;
-
-      // Step 2: Split-Stall Fallback & Load Balancing
-      if (!assignedVendor) {
-        const eligible = activeVendors
-          .filter((v) => {
-            const inv = v.inventory[cartItem.productId];
-            return inv && inv.stockQty >= cartItem.qty;
-          })
-          .sort((a, b) => {
-            if (b.ratingScore !== a.ratingScore) {
-              return b.ratingScore - a.ratingScore;
-            }
-            const leaveAtKiosk = (orderId) => {
-    setState((prev) => ({
-      ...prev,
-      orders: prev.orders.map((o) =>
-        o.id === orderId
-          ? { ...o, status: 'Left at Junction Kiosk', deliveredTo: 'Partnered Junction Kiosk' }
-          : o
-      ),
-    }));
-  };
-
-  const toggleVendorPriority = (vendorId) => {
-    setState((prev) => ({
-      ...prev,
-      vendors: prev.vendors.map((v) => {
-        if (v.id !== vendorId || v.ratingScore < 4.5) return v;
-        return { ...v, priorityTier: !v.priorityTier };
-      }),
-    }));
-  };
-
-  return (
-              a.inventory[cartItem.productId].wholesalePrice -
-              b.inventory[cartItem.productId].wholesalePrice
-            );
-          });
-
-        if (eligible.length === 0) {
-          return {
-            ok: false,
-            error: `Insufficient active vendor stock for ${product.name}.`,
-          };
-        }
-        assignedVendor = eligible[0];
-      }
-
-      const vendorRef = updatedVendors.find((v) => v.id === assignedVendor.id);
-      const wholesaleCost = vendorRef.inventory[cartItem.productId].wholesalePrice;
-      vendorRef.inventory[cartItem.productId] = {
-        ...vendorRef.inventory[cartItem.productId],
-        stockQty: vendorRef.inventory[cartItem.productId].stockQty - cartItem.qty,
-      };
-
-      newOrderItems.push({
-        itemId: `oi-${state.nextOrderNum}-${idx + 1}`,
-        orderId,
-        productId: product.id,
-        productName: product.name,
-        unit: product.unit,
-        qty: cartItem.qty,
-        studentPrice: product.studentPrice,
-        wholesaleCost,
-        assignedVendorId: assignedVendor.id,
-        vendorPacked: false,
-        riderPickedUp: false,
-        itemRating: null,
-        issueTag: null,
-      });
-    }
-
-    // Step 3: Bag Merge Flagging
-    const distinctVendors = new Set(newOrderItems.map((i) => i.assignedVendorId));
-    const requiresBagMerge = distinctVendors.size >= 2;
-
-    const { totalFee: deliveryFee, itemsSubtotal } = calculateDeliveryFee(cart, state.products);
-    const totalAmount = itemsSubtotal + deliveryFee;
-
-    if (paymentMethod === 'LodgeMart Wallet' && state.walletBalance < totalAmount) {
-      return { ok: false, error: 'Insufficient LodgeMart Wallet balance.' };
-    }
-
-    const newOrder = {
-      id: orderId,
-      studentName: currentUser?.name || 'Chinedu Okafor',
-      studentEmail: currentUser?.email || 'chinedu.unizik@gmail.com',
-      campusZone: selectedZone,
-      pickupHub: selectedHub,
-      batchSlot: batchSlot || selectedBatchSlot,
-      status: 'Order Placed',
-      pickupPin,
-      delegateInfo: {
-        name: '',
-        phone: '',
-        active: false,
-      },
-      requiresBagMerge,
-      deliveryFee,
-      totalAmount,
-      paymentMethod,
-      paymentRef: paymentRef || `LM-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      deliveredTo: null,
-      rated: false,
-    };
-
-    setState((prev) => ({
-      ...prev,
-      vendors: updatedVendors,
-      orders: [newOrder, ...prev.orders],
-      orderItems: [...prev.orderItems, ...newOrderItems],
-      walletBalance:
-        paymentMethod === 'LodgeMart Wallet'
-          ? prev.walletBalance - totalAmount
-          : prev.walletBalance,
-      nextOrderNum: prev.nextOrderNum + 1,
-    }));
-
-    clearCart();
-    return { ok: true, order: newOrder };
-  };
-
-  const toggleItemPacked = (itemId) => {
-    setState((prev) => {
-      const updatedItems = prev.orderItems.map((item) =>
-        item.itemId === itemId ? { ...item, vendorPacked: !item.vendorPacked } : item
-      );
-
-      const targetItem = updatedItems.find((i) => i.itemId === itemId);
-      const updatedOrders = prev.orders.map((order) => {
-        if (order.id !== targetItem?.orderId) return order;
-        const itemsForOrder = updatedItems.filter((i) => i.orderId === order.id);
-        const allPacked = itemsForOrder.every((i) => i.vendorPacked);
-        if (allPacked && order.status === 'Order Placed') {
-          return { ...order, status: 'Packed at Market' };
-        }
-        if (!allPacked && order.status === 'Packed at Market') {
-          return { ...order, status: 'Order Placed' };
-        }
-        return order;
-      });
-
-      return {
-        ...prev,
-        orderItems: updatedItems,
-        orders: updatedOrders,
-      };
-    });
-  };
-
-  const confirmStallPickup = (vendorId, batchSlot, photoDataUrl) => {
-    setState((prev) => {
-      const itemsToCollect = prev.orderItems.filter(
-        (item) => item.assignedVendorId === vendorId && !item.riderPickedUp
-      );
-
-      const payoutAmount = itemsToCollect.reduce(
-        (sum, item) => sum + item.wholesaleCost * item.qty,
-        0
-      );
-
-      const updatedItems = prev.orderItems.map((item) =>
-        item.assignedVendorId === vendorId && !item.riderPickedUp
-          ? { ...item, riderPickedUp: true, vendorPacked: true }
-          : item
-      );
-
-      const updatedVendors = prev.vendors.map((v) =>
-        v.id === vendorId
-          ? { ...v, walletBalance: v.walletBalance + payoutAmount }
-          : v
-      );
-
-      const updatedOrders = prev.orders.map((order) => {
-        const orderItems = updatedItems.filter((i) => i.orderId === order.id);
-        const allPickedUp = orderItems.length > 0 && orderItems.every((i) => i.riderPickedUp);
-        if (allPickedUp && (order.status === 'Order Placed' || order.status === 'Packed at Market')) {
-          return { ...order, status: 'Rider In Transit' };
-        }
-        return order;
-      });
-
-      const newPickup = {
-        id: `sp-${Date.now()}`,
-        vendorId,
-        batchSlot: batchSlot || 'Active Batch',
-        photoDataUrl,
-        capturedAt: new Date().toISOString(),
-        payoutReleased: true,
-        payoutAmount,
-      };
-
-      return {
-        ...prev,
-        orderItems: updatedItems,
-        vendors: updatedVendors,
-        orders: updatedOrders,
-        stallPickups: [newPickup, ...prev.stallPickups],
-      };
-    });
-  };
-
-  const markHubArrived = (hubName) => {
-    setState((prev) => ({
-      ...prev,
-      hubArrivals: {
-        ...prev.hubArrivals,
-        [hubName]: Date.now(),
-      },
-      orders: prev.orders.map((order) =>
-        order.pickupHub === hubName && order.status === 'Rider In Transit'
-          ? { ...order, status: 'Ready at Hub' }
-          : order
-      ),
-    }));
-  };
-
-  const verifyHandoverPin = (orderId, enteredPin) => {
-    const order = state.orders.find((o) => o.id === orderId);
-    if (!order) return { ok: false, error: 'Order not found.' };
-    if (order.pickupPin !== enteredPin.trim()) {
-      return { ok: false, error: 'Invalid 4-digit PIN. Check with student or delegate.' };
-    }
-
-    const recipient = order.delegateInfo?.active
-      ? `${order.delegateInfo.name} (Delegate)`
-      : order.studentName;
-
-    setState((prev) => ({
-      ...prev,
-      orders: prev.orders.map((o) =>
-        o.id === orderId
-          ? { ...o, status: 'Collected', deliveredTo: recipient }
-          : o
-      ),
-      riderEarnings: prev.riderEarnings + RIDER_COMMISSION,
-    }));
-
-    return { ok: true, recipient };
-  };
-
-  const delegateOrderPin = (orderId, roommateName, roommatePhone) => {
-    const newPin = String(Math.floor(1000 + Math.random() * 9000));
-    setState((prev) => ({
-      ...prev,
-      orders: prev.orders.map((o) =>
-        o.id === orderId
-          ? {
-              ...o,
-              pickupPin: newPin,
-              delegateInfo: {
-                name: roommateName.trim(),
-                phone: roommatePhone.trim(),
-                active: true,
-              },
-            }
-          : o
-      ),
-    }));
-    return newPin;
-  };
-
-  const submitOrderRating = (orderId, stars, flaggedItemsMap = {}) => {
-    setState((prev) => {
-      const itemsInOrder = prev.orderItems.filter((i) => i.orderId === orderId);
-      const vendorRatingsToApply = {};
-
-      const updatedOrderItems = prev.orderItems.map((item) => {
-        if (item.orderId !== orderId) return item;
-        const issueTag = flaggedItemsMap[item.itemId] || null;
-
-        if (stars >= 4) {
-          vendorRatingsToApply[item.assignedVendorId] = stars;
-          return { ...item, itemRating: stars, issueTag: null };
-        }
-
-        // Low rating (1-3 stars): penalize ONLY flagged items' vendors, preserve 5-star for unflagged
-        if (issueTag) {
-          vendorRatingsToApply[item.assignedVendorId] = stars;
-          return { ...item, itemRating: stars, issueTag };
-        } else {
-          if (vendorRatingsToApply[item.assignedVendorId] === undefined) {
-            vendorRatingsToApply[item.assignedVendorId] = 5;
-          }
-          return { ...item, itemRating: 5, issueTag: null };
-        }
-      });
-
-      const updatedVendors = prev.vendors.map((v) => {
-        const appliedRating = vendorRatingsToApply[v.id];
-        if (appliedRating === undefined) return v;
-        const newCount = v.ratingCount + 1;
-        const newScore = Number(
-          ((v.ratingScore * v.ratingCount + appliedRating) / newCount).toFixed(2)
-        );
-        return {
-          ...v,
-          ratingScore: newScore,
-          ratingCount: newCount,
-        };
-      });
-
-      const hasFlagged = stars <= 3 && Object.keys(flaggedItemsMap).length > 0;
-      const updatedOrders = prev.orders.map((o) =>
-        o.id === orderId
-          ? { ...o, rated: true, replacementCredit: hasFlagged }
-          : o
-      );
-
-      return {
-        ...prev,
-        orderItems: updatedOrderItems,
-        vendors: updatedVendors,
-        orders: updatedOrders,
-      };
-    });
-  };
-
-  const resetSampleData = () => {
-    const fresh = {
-      products: INITIAL_PRODUCTS,
-      vendors: INITIAL_VENDORS,
-      orders: INITIAL_ORDERS,
-      orderItems: INITIAL_ORDER_ITEMS,
-      stallPickups: [],
-      hubArrivals: {},
-      walletBalance: INITIAL_WALLET_BALANCE,
-      riderEarnings: 0,
-      nextOrderNum: 4083,
-    };
-    setState(fresh);
-    setCart([]);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
-  };
-
-  const CANCELLATION_FEE = 200;
-
-  const cancelOrder = (orderId) => {
-    const order = state.orders.find((o) => o.id === orderId);
-    if (!order) return { ok: false, error: 'Order not found.' };
-    if (order.status !== 'Order Placed' && order.status !== 'Packed at Market') {
-      return {
-        ok: false,
-        error: 'Order cannot be cancelled once the rider has picked it up.',
-      };
-    }
-
-    const refundAmount = Math.max(0, order.totalAmount - CANCELLATION_FEE);
-
-    setState((prev) => {
-      const itemsToRestore = prev.orderItems.filter((i) => i.orderId === orderId);
-      const updatedVendors = prev.vendors.map((v) => {
-        const vendorItems = itemsToRestore.filter((i) => i.assignedVendorId === v.id);
-        if (vendorItems.length === 0) return v;
-        const nextInv = { ...v.inventory };
-        vendorItems.forEach((vi) => {
-          if (nextInv[vi.productId]) {
-            nextInv[vi.productId] = {
-              ...nextInv[vi.productId],
-              stockQty: nextInv[vi.productId].stockQty + vi.qty,
-            };
-          }
-        });
-        return { ...v, inventory: nextInv };
-      });
-
-      return {
-        ...prev,
-        vendors: updatedVendors,
-        orders: prev.orders.map((o) =>
-          o.id === orderId ? { ...o, status: 'Cancelled' } : o
-        ),
-        walletBalance: prev.walletBalance + refundAmount,
-      };
-    });
-
-    return { ok: true, refundAmount, fee: CANCELLATION_FEE };
-  };
-
-  const updateVendorInventory = (vendorId, productId, wholesalePrice, stockQty) => {
-    setState((prev) => ({
-      ...prev,
-      vendors: prev.vendors.map((v) => {
-        if (v.id !== vendorId) return v;
-        return {
-          ...v,
-          inventory: {
-            ...v.inventory,
-            [productId]: {
-              wholesalePrice: Math.max(0, Number(wholesalePrice) || 0),
-              stockQty: Math.max(0, Number(stockQty) || 0),
-            },
-          },
-        };
-      }),
-    }));
-  };
-
-  const leaveAtKiosk = (orderId) => {
-    setState((prev) => ({
-      ...prev,
-      orders: prev.orders.map((o) =>
-        o.id === orderId
-          ? { ...o, status: 'Left at Junction Kiosk', deliveredTo: 'Partnered Junction Kiosk' }
-          : o
-      ),
-    }));
-  };
-
-  const toggleVendorPriority = (vendorId) => {
-    setState((prev) => ({
-      ...prev,
-      vendors: prev.vendors.map((v) => {
-        if (v.id !== vendorId || v.ratingScore < 4.5) return v;
-        return { ...v, priorityTier: !v.priorityTier };
-      }),
-    }));
-  };
-
-  return (
-    <LodgeMartContext.Provider
-      value={{
-        ...state,
-        currentUser,
-        login,
-        logout,
-        selectedZone,
-        selectedHub,
-        setSelectedHub,
-        handleZoneChange,
-        selectedBatchSlot,
-        setSelectedBatchSlot,
-        cart,
-        addToCart,
-        updateCartQty,
-        clearCart,
-        createOrder,
-        toggleItemPacked,
-        confirmStallPickup,
-        markHubArrived,
-        verifyHandoverPin,
-        delegateOrderPin,
-        submitOrderRating,
-        resetSampleData,
-        cancelOrder,
-        updateVendorInventory,
-        leaveAtKiosk,
-        toggleVendorPriority,
-      }}
-    >
-      {children}
-    </LodgeMartContext.Provider>
+  const handleZoneChange = useCallback(
+    (zoneId) => {
+      const zone = catalog?.zones.find((z) => z.id === zoneId);
+      setDropoff((d) => ({ ...d, zoneId, hubId: zone?.hubs.some((h) => h.id === d.hubId) ? d.hubId : zone?.hubs[0]?.id || '' }));
+    },
+    [catalog],
   );
+  const setSelectedHub = useCallback((hubId) => setDropoff((d) => ({ ...d, hubId })), []);
+  const setSelectedBatchSlot = useCallback((slotId) => setDropoff((d) => ({ ...d, slotId })), []);
+
+  // ---- orders ------------------------------------------------------------------
+  // paymentMethod: 'WALLET' | 'BANK_TRANSFER'
+  const createOrder = useCallback(
+    async (paymentMethod) => {
+      if (cart.length === 0) return { ok: false, error: 'Your basket is empty.' };
+      try {
+        const res = await api('/orders', {
+          method: 'POST',
+          body: {
+            items: cart.map((i) => ({ productId: i.productId, qty: i.qty })),
+            zoneId: dropoff.zoneId,
+            hubId: dropoff.hubId,
+            batchSlotId: dropoff.slotId,
+            paymentMethod,
+          },
+        });
+        clearCart();
+        await Promise.allSettled([refreshOrders(), refreshWallet(), refreshCatalog()]);
+        return { ok: true, order: adaptOrder(res.order), payment: res.payment || null };
+      } catch (err) {
+        if (err.code === 'OUT_OF_STOCK') refreshCatalog();
+        return fail(err);
+      }
+    },
+    [cart, dropoff, clearCart, refreshOrders, refreshWallet, refreshCatalog],
+  );
+
+  const verifyPayment = useCallback(
+    async (orderId) => {
+      try {
+        const { order } = await api(`/orders/${orderId}/verify-payment`, { method: 'POST' });
+        await refreshOrders();
+        return { ok: true, order: adaptOrder(order) };
+      } catch (err) {
+        return fail(err);
+      }
+    },
+    [refreshOrders],
+  );
+
+  const cancelOrder = useCallback(
+    async (orderId) => {
+      try {
+        const res = await api(`/orders/${orderId}/cancel`, { method: 'POST' });
+        await Promise.allSettled([refreshOrders(), refreshWallet(), refreshCatalog()]);
+        return { ok: true, refundAmount: toNaira(res.refundKobo), fee: toNaira(res.cancellationFeeKobo) };
+      } catch (err) {
+        return fail(err);
+      }
+    },
+    [refreshOrders, refreshWallet, refreshCatalog],
+  );
+
+  const delegateOrderPin = useCallback(
+    async (orderId, name, phone) => {
+      try {
+        const res = await api(`/orders/${orderId}/delegate`, { method: 'POST', body: { name: name.trim(), phone: phone.trim() } });
+        await refreshOrders();
+        return { ok: true, pin: res.pickupPin };
+      } catch (err) {
+        return fail(err);
+      }
+    },
+    [refreshOrders],
+  );
+
+  // flaggedItemsMap: { [itemId]: issueTag }
+  const submitOrderRating = useCallback(
+    async (orderId, stars, flaggedItemsMap = {}) => {
+      try {
+        const flaggedItems = stars <= 3 ? Object.entries(flaggedItemsMap).map(([itemId, issueTag]) => ({ itemId, issueTag })) : [];
+        const res = await api(`/orders/${orderId}/rating`, { method: 'POST', body: { stars, flaggedItems } });
+        await refreshOrders();
+        return { ok: true, replacementCredit: res.replacementCredit };
+      } catch (err) {
+        return fail(err);
+      }
+    },
+    [refreshOrders],
+  );
+
+  const createVirtualAccount = useCallback(
+    async (ids) => {
+      try {
+        await api('/wallet/virtual-account', { method: 'POST', body: ids });
+        await refreshWallet();
+        return { ok: true };
+      } catch (err) {
+        return fail(err);
+      }
+    },
+    [refreshWallet],
+  );
+
+  const value = useMemo(() => {
+    const zones = catalog?.zones || [];
+    const zone = zones.find((z) => z.id === dropoff.zoneId);
+    const hub = zone?.hubs.find((h) => h.id === dropoff.hubId);
+    const slot = catalog?.slots.find((s) => s.id === dropoff.slotId);
+    return {
+      // session
+      currentUser,
+      authReady,
+      login,
+      register,
+      logout,
+      // catalog
+      catalog,
+      catalogError,
+      refreshCatalog,
+      products: catalog?.products || [],
+      zones,
+      slots: catalog?.slots || [],
+      feeRules: catalog?.feeRules,
+      // drop-off
+      selectedZoneId: dropoff.zoneId,
+      selectedHubId: dropoff.hubId,
+      selectedSlotId: dropoff.slotId,
+      selectedZone: zone?.name || '',
+      selectedHub: hub?.name || '',
+      selectedSlot: slot,
+      handleZoneChange,
+      setSelectedHub,
+      setSelectedBatchSlot,
+      // basket
+      cart,
+      addToCart,
+      updateCartQty,
+      clearCart,
+      // student wallet + orders
+      wallet,
+      walletBalance: wallet?.balance ?? currentUser?.walletBalance ?? 0,
+      refreshWallet,
+      createVirtualAccount,
+      orders,
+      refreshOrders,
+      createOrder,
+      verifyPayment,
+      cancelOrder,
+      delegateOrderPin,
+      submitOrderRating,
+    };
+  }, [
+    currentUser, authReady, login, register, logout, catalog, catalogError, refreshCatalog, dropoff,
+    handleZoneChange, setSelectedHub, setSelectedBatchSlot, cart, addToCart, updateCartQty, clearCart,
+    wallet, refreshWallet, createVirtualAccount, orders, refreshOrders, createOrder, verifyPayment,
+    cancelOrder, delegateOrderPin, submitOrderRating,
+  ]);
+
+  return <LodgeMartContext.Provider value={value}>{children}</LodgeMartContext.Provider>;
 }
 
 export function useLodgeMart() {
   const ctx = useContext(LodgeMartContext);
-  if (!ctx) {
-    throw new Error('useLodgeMart must be used within a LodgeMartProvider');
-  }
+  if (!ctx) throw new Error('useLodgeMart must be used within a LodgeMartProvider');
   return ctx;
 }

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import { ArrowRight, Clock, Store, Bike, MapPin, KeyRound } from 'lucide-react';
 import { useLodgeMart } from '../context/LodgeMartContext';
-import { CAMPUS_ZONES, ALL_HUBS, BATCH_SLOTS, INITIAL_ORDERS } from '../data/seedData';
+import { CAMPUS_ZONES, ALL_HUBS, BATCH_SCHEDULE, INITIAL_ORDERS } from '../data/seedData';
+import { secondsToNextCutoff } from '../lib/adapters';
 import { getProductImage } from '../data/productImages';
 import { naira } from '../lib/format';
 import Button from '../components/ui/Button';
@@ -35,7 +36,7 @@ function HeroLine({ children, delay, className = '' }) {
   );
 }
 
-function Hero({ mins, secs }) {
+function Hero({ hours, mins, secs }) {
   const reduce = useReducedMotion();
   const { scrollY } = useScroll();
   const dishSpin = useTransform(scrollY, [0, 900], [0, 140]);
@@ -94,8 +95,8 @@ function Hero({ mins, secs }) {
           </h1>
 
           <motion.p {...fade(0.55)} className="mt-7 max-w-xl text-base sm:text-lg leading-relaxed text-white/80">
-            Skip the market commute and the 25%–35% campus kiosk markup. Join a batch run timed to your
-            lecture breaks for a flat ₦350.
+            Skip the market commute and the 25%–35% campus kiosk markup. Order by 3 PM, collect at your
+            junction from 5 PM, Monday to Saturday. Delivery from ₦350.
           </motion.p>
 
           <motion.div {...fade(0.7)} className="mt-9 flex w-full max-w-xs flex-col gap-3 sm:w-auto sm:max-w-none sm:flex-row sm:justify-center sm:gap-4">
@@ -112,8 +113,8 @@ function Hero({ mins, secs }) {
             className="mt-9 inline-flex items-center gap-3 border-y border-white/20 py-3 font-display uppercase"
           >
             <Clock className="h-4 w-4 text-accent-400" />
-            <span className="text-xs tracking-[0.2em] text-white/70">Next cutoff · Midday Break</span>
-            <RollingDigits value={`00:${mins}:${secs}`} className="text-2xl font-medium tracking-[0.04em] text-white" />
+            <span className="text-xs tracking-[0.2em] text-white/70">Next cutoff · 3:00 PM</span>
+            <RollingDigits value={`${hours}:${mins}:${secs}`} className="text-2xl font-medium tracking-[0.04em] text-white" />
           </motion.div>
         </div>
       </div>
@@ -152,7 +153,7 @@ function PinDisc() {
 const PROMISES = [
   {
     title: 'Junction batch drops',
-    body: 'Pick up at Dynamo Junction, School Gate, or Aroma Junction between lectures for a flat ₦350.',
+    body: 'Pick up at Dynamo Junction, School Gate, or Aroma Junction after class, from ₦350 delivery.',
     img: '/images/market-evening.webp',
   },
   {
@@ -310,7 +311,7 @@ function MarkupBanner() {
         <span aria-hidden="true" className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-x-[14px] border-t-[14px] border-x-transparent border-t-ink" />
       </div>
       <p className="bg-tile py-5 text-center font-display text-base sm:text-lg uppercase tracking-[0.08em] text-ink">
-        Flat ₦350 per batch · Pay with LodgeMart Wallet or Paystack
+        Delivery from ₦350 · Pay with LodgeMart Wallet or bank transfer (Monnify)
       </p>
     </section>
   );
@@ -358,7 +359,7 @@ function BestDeals({ products }) {
   const [first, second, third] = ranked;
   if (!first) return null;
   return (
-    <section className="bg-canvas py-20 sm:py-28" aria-labelledby="deals-title">
+    <section className="overflow-x-clip bg-canvas py-20 sm:py-28" aria-labelledby="deals-title">
       <div className={wrap}>
         <SectionHeader
           id="deals-title"
@@ -406,13 +407,12 @@ function Hubs() {
             );
           })}
         </Reveal>
-        <Reveal stagger={0.1} className="mt-16 grid gap-4 sm:grid-cols-3">
-          {BATCH_SLOTS.map((slot) => (
-            <Reveal.Item key={slot.id} className="rounded-lg border-2 border-ink/10 p-6 text-center transition-colors duration-300 hover:border-accent-500">
-              <p className="font-display text-xs uppercase tracking-[0.25em] text-accent-700">{slot.badge}</p>
-              <p className="mt-2 font-display text-2xl font-medium uppercase text-ink">{slot.label}</p>
-              <p className="mt-1 text-base text-ink">{slot.time}</p>
-              <p className="mt-1 text-sm text-muted">Order by {slot.cutoff}</p>
+        <Reveal stagger={0.1} className="mt-16 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {BATCH_SCHEDULE.map((step) => (
+            <Reveal.Item key={step.title} className="rounded-lg border-2 border-ink/10 p-6 text-center transition-colors duration-300 hover:border-accent-500">
+              <p className="font-display text-xs uppercase tracking-[0.25em] text-accent-700">{step.time}</p>
+              <p className="mt-2 font-display text-2xl font-medium uppercase text-ink">{step.title}</p>
+              <p className="mt-1 text-sm text-muted">{step.body}</p>
             </Reveal.Item>
           ))}
         </Reveal>
@@ -427,7 +427,7 @@ function Savings() {
   const [monthlySpend, setMonthlySpend] = useState(35000);
   const estimatedMonthlySavings = Math.round(monthlySpend * 0.28);
   return (
-    <section className="bg-accent-500 text-ink" aria-labelledby="savings-title">
+    <section className="overflow-x-clip bg-accent-500 text-ink" aria-labelledby="savings-title">
       <div className={`${wrap} grid gap-10 py-16 sm:py-20 lg:grid-cols-2 lg:items-center`}>
         <Reveal variant="left">
           <p className="font-display text-xs uppercase tracking-[0.3em]">Savings calculator</p>
@@ -467,22 +467,22 @@ function Savings() {
 
 export default function LandingPage() {
   const { products, cart, addToCart, updateCartQty } = useLodgeMart();
-  const [secondsLeft, setSecondsLeft] = useState(42 * 60 + 15);
+  // Live countdown to the next 3 PM cutoff (Lagos time, no Sunday batch).
+  const [secondsLeft, setSecondsLeft] = useState(() => secondsToNextCutoff());
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 45 * 60));
-    }, 1000);
+    const timer = setInterval(() => setSecondsLeft(secondsToNextCutoff()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const mins = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
+  const hours = String(Math.floor(secondsLeft / 3600)).padStart(2, '0');
+  const mins = String(Math.floor((secondsLeft % 3600) / 60)).padStart(2, '0');
   const secs = String(secondsLeft % 60).padStart(2, '0');
   const qtyOf = (id) => cart.find((c) => c.productId === id)?.qty || 0;
 
   return (
     <div className="min-h-screen bg-canvas">
-      <Hero mins={mins} secs={secs} />
+      <Hero hours={hours} mins={mins} secs={secs} />
       <Promises />
       <HowItWorks />
       <InThisBatch products={products} qtyOf={qtyOf} addToCart={addToCart} updateCartQty={updateCartQty} />

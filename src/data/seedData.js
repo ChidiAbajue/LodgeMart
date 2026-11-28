@@ -13,28 +13,24 @@ export const CAMPUS_ZONES = [
 
 export const ALL_HUBS = ['Dynamo Junction', 'School Gate', 'Aroma Junction'];
 
+// One evening batch, Monday–Saturday (decision 2026-11-28). Mirrors the API's
+// batch slot; the live app reads slots from GET /api/catalog.
 export const BATCH_SLOTS = [
   {
-    id: 'early',
-    label: 'Early Bird',
-    time: '7:30 AM – 8:00 AM',
-    cutoff: '6:45 AM',
-    badge: 'Pre-Lecture',
-  },
-  {
-    id: 'midday',
-    label: 'Midday Break',
-    time: '1:00 PM – 2:00 PM',
-    cutoff: '12:15 PM',
-    badge: 'Most Popular',
-  },
-  {
     id: 'evening',
-    label: 'Evening Hostel',
-    time: '5:30 PM – 6:30 PM',
-    cutoff: '4:45 PM',
-    badge: 'After Class',
+    label: 'Evening Delivery',
+    time: '5:00 PM – 6:30 PM',
+    cutoff: '3:00 PM',
+    badge: 'Mon – Sat',
   },
+];
+
+// The daily rhythm shown on the landing page.
+export const BATCH_SCHEDULE = [
+  { time: '3:00 PM → 3:00 PM', title: 'Orders open', body: 'Order any time from 3 PM the day before. Cancel freely until the cutoff.' },
+  { time: '3:00 PM', title: 'Cutoff', body: 'The batch goes to the vendors to pack. Orders can no longer be cancelled.' },
+  { time: '4:00 PM', title: 'Rider collects', body: 'Stalls finish packing; one rider picks up every tagged bag.' },
+  { time: '5:00 PM', title: 'Pickup on campus', body: 'Collect at your junction hub with your 4-digit PIN.' },
 ];
 
 export const DELIVERY_FEE = 350;

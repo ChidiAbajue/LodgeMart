@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { MapPin, ShoppingBasket, Plus, Minus, X, Clock, BadgePercent, ArrowRight, ChevronDown } from 'lucide-react';
-import { CAMPUS_ZONES, BATCH_SLOTS, DELIVERY_FEE } from '../data/seedData';
+import { MapPin, ShoppingBasket, Plus, Minus, X, Clock, BadgePercent, ArrowRight, ChevronDown, Search, Truck } from 'lucide-react';
 import { useLodgeMart } from '../context/LodgeMartContext';
+import { prettyDate, quoteDelivery } from '../lib/adapters';
 import { getProductImage } from '../data/productImages';
 import CheckoutModal from '../components/CheckoutModal';
 import PageHeader from '../components/ui/PageHeader';
@@ -31,12 +31,22 @@ function Select({ label, value, onChange, children }) {
 
 export default function StorefrontPage() {
   const {
+    currentUser,
+    catalog,
+    catalogError,
+    refreshCatalog,
     products,
+    zones,
+    slots,
+    feeRules,
     selectedZone,
+    selectedZoneId,
     handleZoneChange,
     selectedHub,
+    selectedHubId,
     setSelectedHub,
-    selectedBatchSlot,
+    selectedSlotId,
+    selectedSlot,
     setSelectedBatchSlot,
     cart,
     addToCart,
@@ -45,14 +55,20 @@ export default function StorefrontPage() {
 
   const navigate = useNavigate();
   const [category, setCategory] = useState('All');
+  const [query, setQuery] = useState('');
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
-  const currentZoneObj = CAMPUS_ZONES.find((z) => z.name === selectedZone) || CAMPUS_ZONES[0];
+  const currentZoneObj = zones.find((z) => z.id === selectedZoneId) || zones[0];
   const categories = ['All', ...new Set(products.map((p) => p.category))];
 
-  const filteredProducts =
-    category === 'All' ? products : products.filter((p) => p.category === category);
+  // Search by name, category or unit (e.g. "rice", "carton", "oil").
+  const q = query.trim().toLowerCase();
+  const filteredProducts = products.filter(
+    (p) =>
+      (category === 'All' || p.category === category) &&
+      (!q || `${p.name} ${p.category} ${p.unit}`.toLowerCase().includes(q)),
+  );
 
   const cartDetails = cart
     .map((item) => {
@@ -70,7 +86,15 @@ export default function StorefrontPage() {
     0
   );
   const totalSavings = kioskSubtotal - itemsSubtotal;
-  const totalPayable = itemsSubtotal > 0 ? itemsSubtotal + DELIVERY_FEE : 0;
+  // Tiered delivery fee preview (the server recalculates it at checkout).
+  const fee = quoteDelivery(cartDetails, feeRules);
+  const totalPayable = itemsSubtotal > 0 ? itemsSubtotal + fee.deliveryFee : 0;
+  const feeReason =
+    fee.bracket === 'standard'
+      ? 'Standard basket (up to ₦10,000)'
+      : fee.bracket === 'large'
+        ? 'Large basket (₦10,001 – ₦20,000)'
+        : 'Large basket (+₦250 per ₦10,000 above ₦20,000)';
   const cartCount = cart.reduce((sum, i) => sum + i.qty, 0);
   const qtyOf = (id) => cart.find((i) => i.productId === id)?.qty || 0;
 
@@ -78,6 +102,14 @@ export default function StorefrontPage() {
     setCheckoutOpen(false);
     setCartOpen(false);
     navigate('/orders');
+  };
+
+  const startCheckout = () => {
+    if (!currentUser) {
+      navigate('/login', { state: { from: '/shop' } });
+      return;
+    }
+    setCheckoutOpen(true);
   };
 
   return (
@@ -95,14 +127,14 @@ export default function StorefrontPage() {
             <span className="hidden md:flex items-center gap-1.5 font-display text-xs font-medium uppercase tracking-[0.18em] text-accent-700">
               <MapPin className="h-4 w-4" /> Drop-off
             </span>
-            <Select label="Campus zone" value={selectedZone} onChange={(e) => handleZoneChange(e.target.value)}>
-              {CAMPUS_ZONES.map((z) => (
-                <option key={z.id} value={z.name}>{z.name}</option>
+            <Select label="Campus zone" value={selectedZoneId} onChange={(e) => handleZoneChange(e.target.value)}>
+              {zones.map((z) => (
+                <option key={z.id} value={z.id}>{z.name}</option>
               ))}
             </Select>
-            <Select label="Pickup hub" value={selectedHub} onChange={(e) => setSelectedHub(e.target.value)}>
-              {currentZoneObj.hubs.map((hub) => (
-                <option key={hub} value={hub}>{hub}</option>
+            <Select label="Pickup hub" value={selectedHubId} onChange={(e) => setSelectedHub(e.target.value)}>
+              {(currentZoneObj?.hubs || []).map((hub) => (
+                <option key={hub.id} value={hub.id}>{hub.name}</option>
               ))}
             </Select>
           </div>
@@ -117,8 +149,29 @@ export default function StorefrontPage() {
         </div>
       </div>
 
+      {/* Search */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-8">
+        <label className="relative flex items-center">
+          <span className="sr-only">Search products</span>
+          <Search className="pointer-events-none absolute left-4 h-5 w-5 text-muted" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search rice, garri, Indomie, oil..."
+            className="h-13 w-full rounded-md border-2 border-ink/10 bg-white pl-12 pr-4 text-base text-ink placeholder:text-muted/70 transition-colors focus:border-accent-500 focus:outline-none"
+          />
+        </label>
+        {catalogError && !catalog && (
+          <p role="alert" className="mt-4 flex flex-wrap items-center gap-3 rounded-md border-2 border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {catalogError}
+            <button onClick={refreshCatalog} className="underline cursor-pointer">Try again</button>
+          </p>
+        )}
+      </div>
+
       {/* Category tabs */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-8">
         <div className="flex items-center gap-7 overflow-x-auto border-b-2 border-ink/10" role="tablist" aria-label="Categories">
           {categories.map((cat) => {
             const active = category === cat;
@@ -145,6 +198,12 @@ export default function StorefrontPage() {
           })}
         </div>
       </div>
+
+      {catalog && filteredProducts.length === 0 && (
+        <p className="max-w-7xl mx-auto px-4 sm:px-6 pt-12 text-center text-muted">
+          No products match “{query}”. Try another word.
+        </p>
+      )}
 
       {/* Product grid */}
       <motion.div layout className="max-w-7xl mx-auto px-4 sm:px-6 pt-10 grid grid-cols-2 gap-x-4 gap-y-10 sm:gap-x-6 lg:grid-cols-4">
@@ -298,12 +357,11 @@ export default function StorefrontPage() {
 
                     <fieldset>
                       <legend className="flex items-center gap-2 font-display text-xs font-medium uppercase tracking-[0.2em] text-accent-700">
-                        <Clock className="h-4 w-4" /> Lecture-aligned batch slot
+                        <Clock className="h-4 w-4" /> Evening delivery · Mon – Sat
                       </legend>
                       <div className="mt-3 space-y-2.5">
-                        {BATCH_SLOTS.map((slot) => {
-                          const fullLabel = `${slot.label} (${slot.time})`;
-                          const selected = selectedBatchSlot === fullLabel;
+                        {slots.map((slot) => {
+                          const selected = selectedSlotId === slot.id;
                           return (
                             <label
                               key={slot.id}
@@ -316,12 +374,14 @@ export default function StorefrontPage() {
                                   type="radio"
                                   name="batchSlot"
                                   checked={selected}
-                                  onChange={() => setSelectedBatchSlot(fullLabel)}
+                                  onChange={() => setSelectedBatchSlot(slot.id)}
                                   className="h-4 w-4 accent-accent-600"
                                 />
                                 <span>
                                   <span className="block font-display text-base font-medium uppercase text-ink">{slot.label}</span>
-                                  <span className="block text-sm text-muted">{slot.time}</span>
+                                  <span className="block text-sm text-muted">
+                                    {slot.time} · {prettyDate(slot.nextBatchDate)} · order by {slot.cutoff}
+                                  </span>
                                 </span>
                               </span>
                               <span className="rounded bg-ink px-2 py-1 font-display text-[10px] uppercase tracking-[0.12em] text-white">
@@ -344,16 +404,30 @@ export default function StorefrontPage() {
                       <dd className="tabular-nums">₦{itemsSubtotal.toLocaleString()}</dd>
                     </div>
                     <div className="flex justify-between text-muted">
-                      <dt>Flat batch delivery fee</dt>
-                      <dd className="tabular-nums">₦{DELIVERY_FEE.toLocaleString()}</dd>
+                      <dt className="flex items-center gap-1.5">
+                        <Truck className="h-4 w-4" /> Delivery fee
+                      </dt>
+                      <dd className="tabular-nums">₦{fee.deliveryFee.toLocaleString()}</dd>
+                    </div>
+                    <div className="space-y-0.5 rounded-md bg-white px-3 py-2 text-xs text-muted">
+                      <p className="flex justify-between">
+                        <span>{feeReason}</span>
+                        <span className="tabular-nums">₦{fee.baseFee.toLocaleString()}</span>
+                      </p>
+                      {fee.bulkCount > 0 && (
+                        <p className="flex justify-between">
+                          <span>Bulk item surcharge ({fee.bulkCount} × ₦250)</span>
+                          <span className="tabular-nums">₦{fee.bulkSurcharge.toLocaleString()}</span>
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-baseline justify-between border-t border-ink/10 pt-2 font-display uppercase text-ink">
                       <dt className="text-lg">Total</dt>
                       <dd className="text-3xl font-semibold tabular-nums">₦{totalPayable.toLocaleString()}</dd>
                     </div>
                   </dl>
-                  <Button onClick={() => setCheckoutOpen(true)} size="lg" variant="accent" className="w-full">
-                    Proceed to checkout <ArrowRight className="h-4 w-4" />
+                  <Button onClick={startCheckout} size="lg" variant="accent" className="w-full">
+                    {currentUser ? 'Proceed to checkout' : 'Sign in to check out'} <ArrowRight className="h-4 w-4" />
                   </Button>
                 </div>
               )}
@@ -366,7 +440,7 @@ export default function StorefrontPage() {
         isOpen={checkoutOpen}
         onClose={() => setCheckoutOpen(false)}
         totalAmount={totalPayable}
-        batchSlot={selectedBatchSlot}
+        batchSlot={selectedSlot ? `${selectedSlot.label} · ${prettyDate(selectedSlot.nextBatchDate)} · ${selectedHub}` : ''}
         onOrderSuccess={handleOrderSuccess}
       />
     </div>

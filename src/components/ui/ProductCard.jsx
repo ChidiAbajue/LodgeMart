@@ -36,6 +36,19 @@ export default function ProductCard({ product, qty = 0, onAdd, onChangeQty, eage
             Save {naira(save)}
           </span>
         )}
+        {product.isBulkItem && (
+          <span
+            className="absolute right-3 top-3 rounded-full bg-ink/80 px-2.5 py-1 font-display text-[10px] font-medium uppercase tracking-[0.08em] text-white"
+            title="Oversized item: adds ₦250 to the delivery fee"
+          >
+            Bulk item (+₦250)
+          </span>
+        )}
+        {!product.inStock && (
+          <span className="absolute inset-x-0 bottom-0 bg-ink/75 py-1.5 text-center font-display text-[11px] uppercase tracking-[0.14em] text-white">
+            Out of stock this batch
+          </span>
+        )}
       </div>
 
       <div className="flex flex-1 flex-col items-center px-1 pt-4 text-center">
@@ -97,13 +110,14 @@ export default function ProductCard({ product, qty = 0, onAdd, onChangeQty, eage
               <motion.button
                 key="add"
                 type="button"
+                disabled={!product.inStock}
                 onClick={() => onAdd(product.id)}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
-                className="group/add relative isolate flex h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-md border-2 border-ink font-display text-xs font-medium uppercase tracking-[0.14em] text-ink transition-colors duration-300 hover:text-white cursor-pointer before:absolute before:inset-0 before:-z-10 before:origin-left before:scale-x-0 before:bg-ink before:transition-transform before:duration-300 before:ease-[cubic-bezier(0.7,0,0.2,1)] hover:before:scale-x-100 active:scale-[0.97]"
+                className="group/add relative isolate flex h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-md border-2 border-ink font-display text-xs font-medium uppercase tracking-[0.14em] text-ink transition-colors duration-300 hover:text-white cursor-pointer before:absolute before:inset-0 before:-z-10 before:origin-left before:scale-x-0 before:bg-ink before:transition-transform before:duration-300 before:ease-[cubic-bezier(0.7,0,0.2,1)] hover:before:scale-x-100 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:before:scale-x-0 disabled:hover:text-ink"
               >
                 <ShoppingBasket className="h-4 w-4" />
-                Add to basket
+                {product.inStock ? 'Add to basket' : 'Out of stock'}
               </motion.button>
             )}
           </AnimatePresence>

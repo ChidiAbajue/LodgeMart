@@ -16,7 +16,7 @@ export default function Footer() {
             Eke Awka market prices, batched and delivered to your UNIZIK lodge junction.
           </p>
           <p className="font-display text-xs uppercase tracking-[0.2em] text-accent-400">
-            LodgeMart Wallet · Paystack
+            LodgeMart Wallet · Bank transfer (Monnify)
           </p>
         </div>
 
@@ -39,13 +39,14 @@ export default function Footer() {
         </div>
 
         <div className="md:col-span-3">
-          <h2 className={head}>Batch times</h2>
+          <h2 className={head}>Delivery</h2>
           <ul className="mt-4 space-y-2.5">
             {BATCH_SLOTS.map((slot) => (
               <li key={slot.id} className="text-[0.95rem] text-white/60">
-                <span className="text-white">{slot.label}</span> · {slot.time}
+                <span className="text-white">{slot.label}</span> · {slot.badge} · {slot.time}
               </li>
             ))}
+            <li className="text-[0.95rem] text-white/60">Order by {BATCH_SLOTS[0].cutoff} · from ₦350</li>
           </ul>
         </div>
       </div>
