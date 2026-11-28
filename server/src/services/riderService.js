@@ -39,6 +39,7 @@ export async function getManifest({ batchDate, batchSlotId }) {
         student: { select: { name: true } },
         hub: { select: { id: true, name: true } },
         items: {
+          where: { refundedAt: null },
           select: {
             qty: true, vendorPacked: true, riderPickedUp: true,
             product: { select: { name: true, unit: true } },
@@ -107,7 +108,7 @@ export async function confirmStallPickup(rider, { vendorId, batchDate, batchSlot
       // A concurrent cancel either finishes first (order skipped here) or waits
       // for us and then sees the picked-up items and refuses.
       const candidates = await tx.order.findMany({
-        where: { batchDate: date, batchSlotId, status: { in: AT_MARKET }, items: { some: { vendorId, riderPickedUp: false } } },
+        where: { batchDate: date, batchSlotId, status: { in: AT_MARKET }, items: { some: { vendorId, riderPickedUp: false, refundedAt: null } } },
         select: { id: true },
       });
       const lockedIds = [];
@@ -117,7 +118,7 @@ export async function confirmStallPickup(rider, { vendorId, batchDate, batchSlot
       }
 
       const items = await tx.orderItem.findMany({
-        where: { orderId: { in: lockedIds }, vendorId, riderPickedUp: false },
+        where: { orderId: { in: lockedIds }, vendorId, riderPickedUp: false, refundedAt: null },
         select: { id: true, qty: true, wholesaleCostKobo: true },
       });
       if (items.length === 0) throw new AppError(409, 'NOTHING_TO_COLLECT', 'No items to collect from this stall for this batch');
@@ -132,7 +133,7 @@ export async function confirmStallPickup(rider, { vendorId, batchDate, batchSlot
 
       // Orders whose every item is now collected are on the road.
       const moved = await tx.order.updateMany({
-        where: { id: { in: lockedIds }, status: { in: AT_MARKET }, items: { every: { riderPickedUp: true } } },
+        where: { id: { in: lockedIds }, status: { in: AT_MARKET }, items: { none: { riderPickedUp: false, refundedAt: null } } },
         data: { status: 'RIDER_IN_TRANSIT' },
       });
 

@@ -29,7 +29,7 @@ export async function rateOrder(student, orderId, { stars, flaggedItems }) {
   return prisma.$transaction(async (tx) => {
     const order = await tx.order.findFirst({
       where: { id: orderId, studentId: student.id },
-      select: { id: true, status: true, items: { select: { id: true, vendorId: true } } },
+      select: { id: true, status: true, items: { where: { refundedAt: null }, select: { id: true, vendorId: true } } },
     });
     if (!order) throw notFound('Order not found');
     if (!['COLLECTED', 'LEFT_AT_KIOSK'].includes(order.status)) {

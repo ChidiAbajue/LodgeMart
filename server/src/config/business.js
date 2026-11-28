@@ -18,6 +18,10 @@ export const DELIVERY_FEE = {
 export const RIDER_COMMISSION_KOBO = 150_00; // ₦150 per handed-over order
 export const CANCELLATION_FEE_KOBO = 200_00; // ₦200
 export const MONNIFY_FEE_PER_ORDER_KOBO = 50_00; // ₦50 flat bank-transfer fee (LodgeMart's cost)
+export const PACKAGING_COST_PER_ORDER_KOBO = 70_00; // ~₦70 tagged bags per order (LodgeMart's cost)
+// Price-spike safeguard: rises up to this per unit are absorbed by LodgeMart;
+// bigger rises switch trader or refund the line item.
+export const PRICE_SPIKE_ABSORB_LIMIT_KOBO = 150_00;
 
 // Vendors rated below this are not routed any orders.
 export const MIN_VENDOR_RATING = 3.5;

@@ -46,3 +46,12 @@ export const handoverSchema = z.strictObject({
   orderId: z.uuid('Invalid order id'),
   pin: z.string().trim().regex(/^\d{4}$/, 'PIN must be 4 digits'),
 });
+
+// Vendor reports a price rise for a product in a batch that students have
+// already ordered (price-spike safeguard).
+export const priceChangeSchema = z.strictObject({
+  productId: id,
+  batchDate,
+  batchSlotId: id,
+  newWholesalePriceKobo: kobo.max(10_000_000, 'Price is too high'),
+});

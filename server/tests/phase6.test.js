@@ -335,7 +335,8 @@ describe('admin: summary and orders', () => {
     expect(money.refundsKobo).toBe(cancelled.totalKobo - 200 * N);
     expect(money.cancellationFeesKobo).toBe(200 * N);
     expect(money.paymentFeesKobo).toBe(50 * N); // Monnify ₦50 per paid order
-    expect(money.grossProfitKobo).toBe(2 * 500 * N + 600 * N + 200 * N - 50 * N);
+    expect(money.packagingKobo).toBe(70 * N); // ~₦70 bags per order
+    expect(money.grossProfitKobo).toBe(2 * 500 * N + 600 * N + 200 * N - 50 * N - 70 * N);
     expect(res.body.vendors.find((v) => v.id === 'v-chidi').receivesOrders).toBe(false); // 3.4★
   });
 

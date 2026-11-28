@@ -218,6 +218,11 @@ model OrderItem {
   stallPickupId     String?
   itemRating        Int?
   issueTag          String?
+  // Price-spike safeguard (set before rider pickup):
+  priceAdjustmentKobo   Int       @default(0) // extra paid to the vendor, absorbed by LodgeMart (≤ ₦150/unit)
+  reassignedFromVendorId String?            // moved to another trader at the locked price
+  refundedAt            DateTime?           // line item refunded to the student's wallet
+  refundKobo            Int?
 
   order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product     Product      @relation(fields: [productId], references: [id])

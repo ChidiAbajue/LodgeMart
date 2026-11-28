@@ -57,6 +57,7 @@ export async function listItems(user, { batchDate, batchSlotId }) {
         ...(batchDate && { batchDate: fromDateString(batchDate) }),
         ...(batchSlotId && { batchSlotId }),
       },
+      refundedAt: null, // refunded line items (price-spike safeguard) are not packed
       ...(!batchDate && { riderPickedUp: false }), // default view: what's still to do
     },
     orderBy: [{ order: { batchDate: 'asc' } }, { order: { orderNumber: 'asc' } }],
@@ -84,7 +85,7 @@ export async function listItems(user, { batchDate, batchSlotId }) {
 export async function setPacked(user, itemId, packed) {
   const vendorId = vendorIdOf(user);
   return prisma.$transaction(async (tx) => {
-    const item = await tx.orderItem.findFirst({ where: { id: itemId, vendorId }, select: { orderId: true, riderPickedUp: true } });
+    const item = await tx.orderItem.findFirst({ where: { id: itemId, vendorId, refundedAt: null }, select: { orderId: true, riderPickedUp: true } });
     if (!item) throw notFound('Item not found');
     if (item.riderPickedUp) throw new AppError(409, 'ALREADY_PICKED_UP', 'The rider has already collected this item');
 
@@ -93,7 +94,7 @@ export async function setPacked(user, itemId, packed) {
     if (locked.count === 0) throw new AppError(409, 'ORDER_CLOSED', 'This order is no longer being packed');
 
     await tx.orderItem.update({ where: { id: itemId }, data: { vendorPacked: packed } });
-    const unpacked = await tx.orderItem.count({ where: { orderId: item.orderId, vendorPacked: false } });
+    const unpacked = await tx.orderItem.count({ where: { orderId: item.orderId, vendorPacked: false, refundedAt: null } });
     const status = unpacked === 0 ? 'PACKED_AT_MARKET' : 'ORDER_PLACED';
     await tx.order.update({ where: { id: item.orderId }, data: { status } });
     return { itemId, vendorPacked: packed, orderStatus: status };

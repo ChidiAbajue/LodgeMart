@@ -1,6 +1,13 @@
 import * as vendorService from '../services/vendorService.js';
 import { vendorItemsQuery } from '../utils/staffSchema.js';
 import { vendorFeedback } from '../services/ratingService.js';
+import { applyPriceChange } from '../services/priceSpikeService.js';
+import { vendorIdOf } from '../services/vendorService.js';
+
+// POST /api/vendor/price-change — price went up for a batch already ordered.
+export async function reportPriceChange(req, res) {
+  res.json(await applyPriceChange({ vendorId: vendorIdOf(req.user), ...req.body }));
+}
 
 // GET /api/vendor/feedback — ratings + flagged items for my stall (no student identity).
 export async function getFeedback(req, res) {

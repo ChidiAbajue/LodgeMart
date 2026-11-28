@@ -57,6 +57,8 @@ const orderSelect = {
       riderPickedUp: true,
       itemRating: true,
       issueTag: true,
+      refundedAt: true,
+      refundKobo: true,
       product: { select: { name: true, unit: true, emoji: true } },
       vendor: { select: { id: true, name: true, stallNumber: true } },
     },
@@ -98,7 +100,8 @@ async function loadOrderInputs({ items, zoneId, hubId, batchSlotId }) {
 
 // Put an order's items back on the shelf (cancel / expiry).
 async function restock(tx, orderId) {
-  const items = await tx.orderItem.findMany({ where: { orderId }, select: { vendorId: true, productId: true, qty: true } });
+  // Refunded line items were already put back when they were refunded.
+  const items = await tx.orderItem.findMany({ where: { orderId, refundedAt: null }, select: { vendorId: true, productId: true, qty: true } });
   for (const item of items) {
     await tx.vendorInventory.updateMany({
       where: { vendorId: item.vendorId, productId: item.productId },
@@ -370,6 +373,10 @@ export async function cancelOrder(student, id) {
     });
     if (!order) throw notFound('Order not found');
 
+    // Line items already refunded by the price-spike safeguard aren't refunded twice.
+    const refunded = await tx.orderItem.aggregate({ where: { orderId: id, refundedAt: { not: null } }, _sum: { refundKobo: true } });
+    const alreadyRefunded = refunded._sum.refundKobo ?? 0;
+
     // The refund depends on whether it was paid, so the update only applies if
     // the status is still exactly what we read. If a payment confirmation
     // (PENDING_PAYMENT → ORDER_PLACED) lands in between, re-read and recompute.
@@ -380,7 +387,7 @@ export async function cancelOrder(student, id) {
       if (!CANCELLABLE.includes(status)) {
         throw new AppError(409, 'CANNOT_CANCEL', 'Order cannot be cancelled once the rider has picked it up');
       }
-      refundKobo = status === 'PENDING_PAYMENT' ? 0 : Math.max(0, order.totalKobo - CANCELLATION_FEE_KOBO);
+      refundKobo = status === 'PENDING_PAYMENT' ? 0 : Math.max(0, order.totalKobo - CANCELLATION_FEE_KOBO - alreadyRefunded);
       const { count } = await tx.order.updateMany({
         where: { id, status },
         data: { status: 'CANCELLED', cancelledAt: new Date(), refundKobo },
@@ -412,7 +419,7 @@ export async function cancelOrder(student, id) {
       orderId: id,
       status: 'CANCELLED',
       refundKobo,
-      cancellationFeeKobo: unpaid ? 0 : order.totalKobo - refundKobo,
+      cancellationFeeKobo: unpaid ? 0 : order.totalKobo - alreadyRefunded - refundKobo,
     };
   });
 }

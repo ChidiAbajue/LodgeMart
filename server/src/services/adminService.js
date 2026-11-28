@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../config/prisma.js';
-import { MIN_VENDOR_RATING, MONNIFY_FEE_PER_ORDER_KOBO, PRIORITY_MIN_RATING } from '../config/business.js';
+import {
+  MIN_VENDOR_RATING, MONNIFY_FEE_PER_ORDER_KOBO, PACKAGING_COST_PER_ORDER_KOBO, PRIORITY_MIN_RATING,
+} from '../config/business.js';
 import { AppError, notFound } from '../utils/errors.js';
 import { hashPassword } from '../utils/password.js';
 import { fromDateString, toDateString } from '../utils/batchDate.js';
@@ -16,12 +18,16 @@ export async function getSummary({ from, to }) {
   const paid = { ...batch, paidAt: { not: null } };
   const live = { ...paid, status: { notIn: ['CANCELLED', 'PENDING_PAYMENT'] } };
 
-  const [byStatus, revenue, refunds, cancelledPaid, liveItems, payouts, riderPay, wallets, vendors, flags] = await Promise.all([
+  const [byStatus, revenue, refunds, cancelledPaid, liveItems, itemRefunds, payouts, riderPay, wallets, vendors, flags] = await Promise.all([
     prisma.order.groupBy({ by: ['status'], where: batch, _count: { _all: true } }),
     prisma.order.aggregate({ where: live, _sum: { totalKobo: true, deliveryFeeKobo: true }, _count: { _all: true } }),
     prisma.order.aggregate({ where: { ...paid, status: 'CANCELLED' }, _sum: { refundKobo: true } }),
     prisma.order.aggregate({ where: { ...paid, status: 'CANCELLED' }, _sum: { totalKobo: true } }),
-    prisma.orderItem.findMany({ where: { order: live }, select: { qty: true, studentPriceKobo: true, wholesaleCostKobo: true } }),
+    prisma.orderItem.findMany({
+      where: { order: live, refundedAt: null },
+      select: { qty: true, studentPriceKobo: true, wholesaleCostKobo: true, priceAdjustmentKobo: true },
+    }),
+    prisma.orderItem.aggregate({ where: { order: { ...batch }, refundedAt: { not: null } }, _sum: { refundKobo: true } }),
     prisma.stallPickup.groupBy({ by: ['payoutStatus'], where: batch, _sum: { payoutKobo: true }, _count: { _all: true } }),
     prisma.riderEarning.aggregate({ where: { order: batch }, _sum: { amountKobo: true }, _count: { _all: true } }),
     prisma.user.aggregate({ where: { role: 'STUDENT' }, _sum: { walletBalanceKobo: true } }),
@@ -37,6 +43,9 @@ export async function getSummary({ from, to }) {
   const riderCostKobo = sum(riderPay, 'amountKobo');
   // Monnify's flat ₦50 bank-transfer fee per paid order (Chidi's unit economics).
   const paymentFeesKobo = revenue._count._all * MONNIFY_FEE_PER_ORDER_KOBO;
+  const packagingKobo = revenue._count._all * PACKAGING_COST_PER_ORDER_KOBO;
+  const itemRefundsKobo = itemRefunds._sum.refundKobo ?? 0;
+  const priceSpikeAbsorbedKobo = liveItems.reduce((s, i) => s + i.priceAdjustmentKobo, 0);
   const flagsByVendor = new Map(flags.map((f) => [f.vendorId, f._count._all]));
 
   return {
@@ -46,15 +55,20 @@ export async function getSummary({ from, to }) {
       paidAndActive: revenue._count._all,
     },
     money: {
-      salesKobo: sum(revenue, 'totalKobo'), // paid, not cancelled
+      salesKobo: sum(revenue, 'totalKobo') - itemRefundsKobo, // paid, not cancelled, minus refunded line items
+      itemRefundsKobo, // price-spike line-item refunds
+      priceSpikeAbsorbedKobo, // extra paid to vendors under the ₦150 absorb rule (already inside itemMargin)
       deliveryFeesKobo: sum(revenue, 'deliveryFeeKobo'),
       itemMarginKobo, // student price − vendor wholesale cost
       cancellationFeesKobo,
       refundsKobo: sum(refunds, 'refundKobo'),
       riderEarningsKobo: riderCostKobo,
       paymentFeesKobo,
-      // What LodgeMart keeps: item margin + delivery fees + cancellation fees − rider commission − Monnify fees
-      grossProfitKobo: itemMarginKobo + sum(revenue, 'deliveryFeeKobo') + cancellationFeesKobo - riderCostKobo - paymentFeesKobo,
+      packagingKobo,
+      // What LodgeMart keeps: item margin + delivery fees + cancellation fees
+      //   − rider commission − Monnify fees − packaging
+      grossProfitKobo: itemMarginKobo + sum(revenue, 'deliveryFeeKobo') + cancellationFeesKobo
+        - riderCostKobo - paymentFeesKobo - packagingKobo,
       studentWalletBalancesKobo: sum(wallets, 'walletBalanceKobo'), // money we hold for students
     },
     payouts: Object.fromEntries(payouts.map((p) => [p.payoutStatus, { count: p._count._all, amountKobo: p._sum.payoutKobo ?? 0 }])),
@@ -154,9 +168,22 @@ export async function listVendors() {
       id: true, name: true, market: true, stallNumber: true, bankName: true, bankCode: true, bankAccountNumber: true,
       ratingScore: true, ratingCount: true, payoutBalanceKobo: true, isActive: true, priorityTier: true,
       user: { select: { id: true, email: true, name: true } },
+      inventory: {
+        orderBy: { product: { name: 'asc' } },
+        select: {
+          productId: true, wholesalePriceKobo: true, stockQty: true, updatedAt: true,
+          product: { select: { name: true, unit: true, emoji: true, category: true, studentPriceKobo: true } },
+        },
+      },
     },
   });
   return vendors.map((v) => ({ ...v, ratingScore: Number(v.ratingScore) }));
+}
+
+export async function getVendor(vendorId) {
+  const v = (await listVendors()).find((x) => x.id === vendorId);
+  if (!v) throw notFound('Vendor not found');
+  return v;
 }
 
 // Update a stall. Payouts always go to the bank details on file at the time.

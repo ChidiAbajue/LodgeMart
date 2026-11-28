@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import * as payoutService from '../services/payoutService.js';
 import * as adminService from '../services/adminService.js';
+import { applyPriceChange } from '../services/priceSpikeService.js';
 import { adminOrdersQuery, summaryQuery, usersQuery } from '../utils/adminSchema.js';
 
 const payoutQuery = z.strictObject({
@@ -50,4 +51,15 @@ export async function listPayouts(req, res) {
 // POST /api/admin/payouts/run — send all pending/failed vendor payouts via Monnify (re-checks in-flight transfers first).
 export async function runPayouts(req, res) {
   res.json(await payoutService.runPayouts());
+}
+
+// POST /api/admin/vendors/:id/price-change — record a vendor's price rise for a
+// batch on their behalf (e.g. reported by phone/WhatsApp).
+export async function reportPriceChange(req, res) {
+  res.json(await applyPriceChange({ vendorId: req.params.id, ...req.body }));
+}
+
+// GET /api/admin/vendors/:id — one stall with everything it sells and its prices.
+export async function getVendor(req, res) {
+  res.json({ vendor: await adminService.getVendor(req.params.id) });
 }
