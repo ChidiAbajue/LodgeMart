@@ -52,13 +52,16 @@ const envSchema = z
     path: ['CLIENT_URL'],
     message: 'in production every allowed frontend origin must be https://',
   })
-  .refine((e) => e.NODE_ENV !== 'production' || e.DATABASE_SSL !== 'off' || /@(localhost|127\.0\.0\.1)[:/]/.test(e.DATABASE_URL), {
+  // Unencrypted is only OK on the same machine or a private network: a host with no dots is a
+  // private service name (Render's internal Postgres hostnames look like `dpg-abc123-a`).
+  .refine((e) => e.NODE_ENV !== 'production' || e.DATABASE_SSL !== 'off' || /@(localhost|127\.0\.0\.1|[a-z0-9-]+)[:/]/i.test(e.DATABASE_URL), {
     path: ['DATABASE_SSL'],
     message: 'in production a remote database must use DATABASE_SSL=require or verify',
   })
-  .refine((e) => e.NODE_ENV !== 'production' || e.JWT_SECRET.length >= 48, {
+  // ≥ 43 chars: a 256-bit base64 value (Render's generateValue) or ≥ 172 bits of hex.
+  .refine((e) => e.NODE_ENV !== 'production' || e.JWT_SECRET.length >= 43, {
     path: ['JWT_SECRET'],
-    message: 'in production JWT_SECRET must be at least 48 characters',
+    message: 'in production JWT_SECRET must be at least 43 characters (256-bit random)',
   })
   .refine((e) => e.NODE_ENV !== 'production' || e.CLOUDINARY_URL !== '', {
     path: ['CLOUDINARY_URL'],

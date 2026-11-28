@@ -16,6 +16,13 @@ function fail(message) {
   process.exit(1);
 }
 
+// `--if-set` (used by `npm run release` on deploy): do nothing unless both
+// ADMIN_EMAIL and ADMIN_PASSWORD are set, so deploys work without them.
+if (process.argv.includes('--if-set') && !(process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD)) {
+  console.log('create-admin: ADMIN_EMAIL / ADMIN_PASSWORD not set, skipping');
+  process.exit(0);
+}
+
 const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
 const name = (process.env.ADMIN_NAME || '').trim();
 const password = process.env.ADMIN_PASSWORD || '';

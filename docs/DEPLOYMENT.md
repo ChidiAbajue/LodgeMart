@@ -8,6 +8,22 @@ and pasting values. **Never paste secrets into git, chat, or the frontend.**
 > lock-down migration and production guard rails. It has **not** yet been run against real Supabase, Upstash or Render
 > accounts. Do the first deploy carefully with the checklist in step 7.
 
+## Quick path (current `render.yaml`): everything on Render
+
+`render.yaml` now creates the API **plus** a Render Postgres database and a Render Key Value (Redis) store, all
+on Render's private network, so Supabase and Upstash are not needed for the sandbox trial.
+
+1. render.com → **New → Blueprint** → repo `ChidiAbajue/LodgeMart`, branch `master` → Render lists 3 resources.
+2. Fill in: `MONNIFY_API_KEY`, `MONNIFY_SECRET_KEY`, `MONNIFY_CONTRACT_CODE`, `MONNIFY_WALLET_ACCOUNT_NUMBER`,
+   `CLOUDINARY_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (12+ chars). Everything else is set or generated.
+3. **Apply.** On every start the API runs `npm run release`: migrations, reference data (zones, hubs, the evening slot,
+   products; never overwrites), and the first admin when `ADMIN_EMAIL` + `ADMIN_PASSWORD` are set.
+4. `https://<service>.onrender.com/api/health` → `ok`. Then step 6 below (Monnify webhooks, Vercel `VITE_API_URL`).
+5. Sign in as the admin → onboard vendors → vendors add their goods and stock (products show "out of stock" until then).
+
+**Limits:** the free database is deleted 30 days after creation. Upgrade it, or move to Supabase (sections 1–5)
+before real customers.
+
 ---
 
 ## 0. Before you start

@@ -20,7 +20,8 @@
     "test:watch": "vitest",
     "build": "prisma generate",
     "create-admin": "node --env-file-if-exists=.env scripts/createAdmin.js",
-    "db:seed:reference": "node --env-file-if-exists=.env prisma/seedReference.js"
+    "db:seed:reference": "node --env-file-if-exists=.env prisma/seedReference.js",
+    "release": "prisma migrate deploy && node --env-file-if-exists=.env prisma/seedReference.js && node --env-file-if-exists=.env scripts/createAdmin.js --if-set"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",

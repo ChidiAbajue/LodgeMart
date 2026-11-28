@@ -113,6 +113,15 @@ describe('production configuration guard rails', () => {
   it('accepts a sensible production config', () => {
     expect(() => parseEnv(prod)).not.toThrow();
   });
+  it('accepts Render-managed Postgres on the private network and a generated 256-bit secret', () => {
+    expect(() => parseEnv({
+      ...prod,
+      DATABASE_URL: 'postgresql://lodgemart:p@dpg-abc123def456-a:5432/lodgemart',
+      DATABASE_SSL: 'off',
+      REDIS_URL: 'redis://red-abc123def456:6379',
+      JWT_SECRET: 'A'.repeat(43) + '=',
+    })).not.toThrow();
+  });
   it.each([
     ['http frontend origin', { CLIENT_URL: 'http://lodge-mart.vercel.app' }, /CLIENT_URL/],
     ['unencrypted remote database', { DATABASE_SSL: 'off' }, /DATABASE_SSL/],
