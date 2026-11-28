@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
-  ChevronDown, Star, ShieldCheck, AlertTriangle, Split, Trophy, UserPlus, Store, Banknote, TrendingUp, Crown, Power, RefreshCw, Loader2,
+  ChevronDown, Star, ShieldCheck, AlertTriangle, Split, Trophy, UserPlus, Store, Banknote, TrendingUp, Crown, Power, RefreshCw, Loader2, Bike,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { koboToNaira, prettyDate, statusLabel, toNaira } from '../lib/adapters';
@@ -99,6 +99,99 @@ function OnboardVendorForm({ onCreated }) {
   );
 }
 
+const EMPTY_RIDER = { name: '', email: '', phone: '', password: '' };
+
+// Riders: create a login, list them, pause / resume (a paused rider is signed out at once).
+function RidersPanel() {
+  const [riders, setRiders] = useState([]);
+  const [f, setF] = useState(EMPTY_RIDER);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+
+  const loadRiders = useCallback(async () => {
+    try {
+      setRiders((await api('/admin/users?role=RIDER')).users);
+    } catch (err) {
+      setMsg({ ok: false, text: err.message });
+    }
+  }, []);
+  useEffect(() => {
+    loadRiders();
+  }, [loadRiders]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setMsg(null);
+    try {
+      const { user } = await api('/admin/users', {
+        method: 'POST',
+        body: { role: 'RIDER', name: f.name, email: f.email, password: f.password, ...(f.phone && { phone: f.phone }) },
+      });
+      setMsg({ ok: true, text: `${user.name} can now sign in as ${user.email} and lands on the rider dispatch page.` });
+      setF(EMPTY_RIDER);
+      loadRiders();
+    } catch (err) {
+      setMsg({ ok: false, text: err.details?.[0]?.message || err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = async (r) => {
+    try {
+      await api(`/admin/users/${r.id}`, { method: 'PATCH', body: { isActive: !r.isActive } });
+      loadRiders();
+    } catch (err) {
+      setMsg({ ok: false, text: err.message });
+    }
+  };
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-2">
+      <form onSubmit={submit} className={`${card} space-y-5 p-6`}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField label="Rider's full name" required value={f.name} onChange={set('name')} placeholder="Tunde Bakare" />
+          <TextField label="Phone (optional)" value={f.phone} onChange={set('phone')} placeholder="08031234567" />
+          <TextField label="Login email" type="email" required value={f.email} onChange={set('email')} />
+          <TextField label="Password (10+ chars)" type="password" required minLength={10} value={f.password} onChange={set('password')} autoComplete="new-password" />
+        </div>
+        {msg && (
+          <p role={msg.ok ? 'status' : 'alert'} className={`rounded-md px-4 py-3 text-sm font-semibold ${msg.ok ? 'bg-brand-50 text-brand-700' : 'border-2 border-red-200 bg-red-50 text-red-700'}`}>
+            {msg.text}
+          </p>
+        )}
+        <ActionButton type="submit" disabled={busy}>
+          <UserPlus className="h-4 w-4" /> {busy ? 'Creating...' : 'Add rider'}
+        </ActionButton>
+      </form>
+      <div className={`${card} overflow-hidden`}>
+        {riders.length === 0 ? (
+          <p className="p-6 text-muted">No riders yet.</p>
+        ) : (
+          <ul>
+            {riders.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 px-5 py-3 last:border-0">
+                <span className="text-sm text-ink">
+                  <span className="block font-semibold">{r.name}</span>
+                  <span className="text-muted">{r.email}{r.phone ? ` · ${r.phone}` : ''}</span>
+                </span>
+                <button
+                  onClick={() => toggle(r)}
+                  className="flex h-9 items-center gap-1.5 rounded-md border-2 border-ink/15 px-3 font-display text-[11px] font-medium uppercase tracking-[0.1em] text-ink transition-colors hover:border-ink cursor-pointer"
+                >
+                  <Power className="h-3.5 w-3.5" /> {r.isActive ? 'Pause' : 'Resume'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboardPage() {
   const [summary, setSummary] = useState(null);
   const [vendors, setVendors] = useState([]);
@@ -175,6 +268,7 @@ export default function AdminDashboardPage() {
     { href: '#economics', label: 'Unit economics' },
     { href: '#vendors', label: 'Vendors & prices' },
     { href: '#onboard', label: 'Onboard vendor' },
+    { href: '#riders', label: 'Riders' },
     { href: '#payouts', label: 'Payouts' },
     { href: '#inspector', label: 'Order splits' },
   ];
@@ -365,6 +459,13 @@ export default function AdminDashboardPage() {
         <div id="onboard" className="scroll-mt-32">
           <PortalSection kicker="Stall login + bank details for instant payouts" title="Onboard a vendor" icon={Store}>
             <OnboardVendorForm onCreated={load} />
+          </PortalSection>
+        </div>
+
+        {/* Riders */}
+        <div id="riders" className="scroll-mt-32">
+          <PortalSection kicker="Dispatch logins for the evening run" title="Riders" icon={Bike}>
+            <RidersPanel />
           </PortalSection>
         </div>
 
