@@ -11,7 +11,7 @@ and pasting values. **Never paste secrets into git, chat, or the frontend.**
 ---
 
 ## 0. Before you start
-- Use **Paystack TEST keys** until the whole flow is proven. The server refuses a live key unless `NODE_ENV=production`.
+- Use **Monnify SANDBOX keys** (`MK_TEST_…` + `https://sandbox.monnify.com`) until the whole flow is proven. Live keys (`MK_PROD_…`) are refused unless `NODE_ENV=production`, and must go with `https://api.monnify.com`.
 - Keep a password manager or private note for the values you collect below.
 
 ## 1. Supabase: the database
@@ -47,13 +47,11 @@ on purpose (fail closed).
 2. Fill in every variable it asks for:
    - `DATABASE_URL`, `MIGRATE_DATABASE_URL`, `DATABASE_CA_CERT`
    - `REDIS_URL`, `JWT_SECRET`
-   - `PAYSTACK_SECRET_KEY`, `PAYSTACK_PUBLIC_KEY`
+   - `MONNIFY_API_KEY`, `MONNIFY_SECRET_KEY`, `MONNIFY_CONTRACT_CODE`, `MONNIFY_WALLET_ACCOUNT_NUMBER`
    - `CLOUDINARY_URL`
-3. **Plan:** `render.yaml` uses **starter** (paid). It needs `preDeployCommand` to run migrations before each
-   deploy, and it never sleeps. On the free plan:
-   - move migrations into the build: `buildCommand: npm ci --include=dev && npm run build && npx prisma migrate deploy`
-   - remove `preDeployCommand`
-   - the free plan sleeps after 15 minutes idle (the first request takes ~30 s, and the unpaid-order expiry timer only runs while it's awake)
+3. **Plan:** `render.yaml` uses the **free** plan for the sandbox trial (migrations run in the build). It sleeps after
+   15 minutes idle (first request ~30 s; the unpaid-order expiry timer only runs while awake). Before real customers,
+   switch to **starter** and move `npx prisma migrate deploy` into `preDeployCommand`.
 4. Deploy. When it's live, `https://<service>.onrender.com/api/health` should return `{"status":"ok", …}`.
 
 The server **refuses to start** in production if:
@@ -83,11 +81,9 @@ Remove-Item Env:DATABASE_URL, Env:DATABASE_SSL, Env:NODE_ENV, Env:ADMIN_PASSWORD
 - After that, log in as the admin. Create vendor and rider accounts with `POST /api/admin/users`, and have
   vendors set their stock (`PUT /api/vendor/inventory/:productId`).
 
-## 6. Wire up Paystack, Cloudinary and Vercel
-- **Paystack dashboard** → Settings → API Keys & Webhooks:
-  - Webhook URL: `https://<service>.onrender.com/api/payments/paystack/webhook`
-  - Callback URL: already set via `PAYSTACK_CALLBACK_URL` (`https://lodge-mart.vercel.app/orders`)
-  - For vendor payouts: Settings → Preferences → **disable OTP for transfers**
+## 6. Wire up Monnify, Cloudinary and Vercel
+- **Monnify dashboard** (sandbox) → Developer → Webhook URLs: set the transaction **and** disbursement webhook to
+  `https://<service>.onrender.com/api/payments/monnify/webhook`
 - **Cloudinary:** nothing else to do. The API signs uploads, and `CLOUDINARY_URL` is enough.
 - **Vercel** (frontend project) → Environment Variables: `VITE_API_URL=https://<service>.onrender.com/api` → redeploy.
 - If the frontend is also served from another domain (a custom domain, or Vercel preview URLs), add it to `CLIENT_URL`
@@ -95,21 +91,20 @@ Remove-Item Env:DATABASE_URL, Env:DATABASE_SSL, Env:NODE_ENV, Env:ADMIN_PASSWORD
 
 ## 7. First-deploy checklist
 - [ ] `GET /api/health` → `status: ok`, database `up`, redis `up`
-- [ ] Render logs show no `PAYSTACK_SECRET_KEY not set` / `CLOUDINARY_URL not set` warnings
+- [ ] Render logs show no `MONNIFY_API_KEY not set` / `CLOUDINARY_URL not set` warnings
 - [ ] **Supabase lock-down works:** this must return `[]` or a permission error, never rows:
   `curl "https://<ref>.supabase.co/rest/v1/User?select=email" -H "apikey: <anon key>"`
   Supabase → Advisors → Security should show no "RLS disabled" errors.
 - [ ] Log in as the admin; `GET /api/admin/summary` works
 - [ ] Student sign-up → wallet order works (top up a test wallet via the admin or SQL for testing)
-- [ ] **Card test:** order with `PAYSTACK` → pay with Paystack's test card
-  (`4084 0840 8408 4081`, any future date, CVV `408`, PIN `0000`, OTP `123456`)
-  → order becomes `ORDER_PLACED` within seconds (Render logs: `Paystack webhook … result: PAID`)
+- [ ] **Bank transfer test:** order with `BANK_TRANSFER` → pay the one-time account from the Monnify sandbox
+  (dashboard simulator) → order becomes `ORDER_PLACED` (webhook, or the student's "I have sent the transfer" button)
 - [ ] Rider: photo signature → upload → stall pickup; hub arrival; PIN handover
 - [ ] Admin: `POST /api/admin/payouts/run` → test transfer `PAID` (or `PROCESSING` then `PAID` via webhook)
 - [ ] CORS: the Vercel site can call the API; a random origin gets 403
 
 ## 8. Going live with real money (later)
-Swap in the **live** Paystack keys (`sk_live_…`) on Render only after the checklist passes with test keys. Also:
-- Update the webhook URL in the Paystack *live* settings.
+Swap in the **live** Monnify keys (`MK_PROD_…`, `MONNIFY_BASE_URL=https://api.monnify.com`) on Render only after the checklist passes with sandbox keys. Also:
+- Set the webhook URLs in the Monnify *live* settings.
 - Keep Supabase backups on (paid plans have point-in-time recovery). The free plan also **pauses after a week of
   no activity**, so use a paid plan for the real shop.

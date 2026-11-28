@@ -7,10 +7,12 @@ services:
     name: lodgemart-api
     runtime: node
     rootDir: server
-    plan: starter            # free plan sleeps after 15 min idle (slow first request, expiry timer pauses)
+    # Free plan for the sandbox trial: it sleeps after 15 min idle (first request ~30 s,
+    # unpaid-order expiry timer pauses). Before real customers switch to `starter` and move
+    # `npx prisma migrate deploy` from buildCommand into `preDeployCommand`.
+    plan: free
     region: frankfurt        # closest Render region to Nigeria
-    buildCommand: npm ci --include=dev && npm run build
-    preDeployCommand: npx prisma migrate deploy
+    buildCommand: npm ci --include=dev && npm run build && npx prisma migrate deploy
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
@@ -34,11 +36,18 @@ services:
         value: 1d
       - key: CLIENT_URL
         value: https://lodge-mart.vercel.app
-      - key: PAYSTACK_SECRET_KEY
+      # Monnify (Developer → API Keys & Contracts). Sandbox first: MK_TEST_ key + sandbox URL.
+      - key: MONNIFY_API_KEY
         sync: false
-      - key: PAYSTACK_PUBLIC_KEY
+      - key: MONNIFY_SECRET_KEY
         sync: false
-      - key: PAYSTACK_CALLBACK_URL
+      - key: MONNIFY_CONTRACT_CODE
+        sync: false
+      - key: MONNIFY_WALLET_ACCOUNT_NUMBER   # Disbursements → wallet account (vendor payouts are sent from it)
+        sync: false
+      - key: MONNIFY_BASE_URL
+        value: https://sandbox.monnify.com
+      - key: MONNIFY_REDIRECT_URL
         value: https://lodge-mart.vercel.app/orders
       - key: CLOUDINARY_URL
         sync: false
