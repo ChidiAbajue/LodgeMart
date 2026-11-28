@@ -12,7 +12,7 @@ const app = createApp();
 const TEST_DOMAIN = '@phase9.test';
 const N = 100;
 const PHOTO = 'https://res.cloudinary.com/lodgemart-test/image/upload/v1/lodgemart/stall-pickups/s.jpg';
-const BASE = { zoneId: 'ifite', hubId: 'dynamo-junction', batchSlotId: 'midday', paymentMethod: 'WALLET' };
+const BASE = { zoneId: 'ifite', hubId: 'dynamo-junction', batchSlotId: 'evening', paymentMethod: 'WALLET' };
 
 let inventorySnapshot, vendorSnapshot;
 const tokens = {};
@@ -33,11 +33,11 @@ async function clearKeys() {
 async function orderAt(date, items) {
   const res = await request(app).post('/api/orders').set(as('ada')).send({ ...BASE, items });
   if (res.status !== 201) throw new Error(JSON.stringify(res.body));
-  await prisma.order.update({ where: { id: res.body.order.id }, data: { batchDate: new Date(`${date}T00:00:00Z`) } });
+  if (date) await prisma.order.update({ where: { id: res.body.order.id }, data: { batchDate: new Date(`${date}T00:00:00Z`) } });
   return res.body.order;
 }
 const item = (order, productId) => order.items.find((i) => i.productId === productId);
-const reportAsVendor = (who, body) => request(app).post('/api/vendor/price-change').set(as(who)).send({ batchSlotId: 'midday', ...body });
+const reportAsVendor = (who, body) => request(app).post('/api/vendor/price-change').set(as(who)).send({ batchSlotId: 'evening', ...body });
 
 beforeAll(async () => {
   if (!process.env.REDIS_URL.endsWith('/1')) throw new Error('Tests must use Redis DB 1');
@@ -102,7 +102,7 @@ describe('layer 1: small rise (≤ ₦150) is absorbed by LodgeMart', () => {
 
     // The stall payout uses the new price.
     const pickup = await request(app).post('/api/rider/stall-pickups').set(as('rider'))
-      .send({ vendorId: 'v-emeka', batchDate: date, batchSlotId: 'midday', photoUrl: PHOTO });
+      .send({ vendorId: 'v-emeka', batchDate: date, batchSlotId: 'evening', photoUrl: PHOTO });
     expect(pickup.body.payoutKobo).toBe(2 * 4850 * N);
   });
 
@@ -143,7 +143,7 @@ describe('layer 2: big rise switches to another verified trader at the locked pr
     const order = await orderAt(date, [{ productId: 'sku-rice', qty: 1 }]);
     // Chidi was already collected from in this batch (a stall pickup exists).
     await prisma.stallPickup.create({
-      data: { vendorId: 'v-chidi', riderId: ids.rider, batchSlotId: 'midday', batchDate: new Date(`${date}T00:00:00Z`), photoUrl: PHOTO, payoutKobo: 0 },
+      data: { vendorId: 'v-chidi', riderId: ids.rider, batchSlotId: 'evening', batchDate: new Date(`${date}T00:00:00Z`), photoUrl: PHOTO, payoutKobo: 0 },
     });
     const res = await reportAsVendor('emeka', { productId: 'sku-rice', batchDate: date, newWholesalePriceKobo: 5200 * N });
     expect(res.body.refunded).toBe(1);
@@ -170,9 +170,9 @@ describe('layer 3: no trader at the locked price → refund the line item to the
     const ngoziItems = await request(app).get(`/api/vendor/items?batchDate=${date}`).set(as('ngozi'));
     expect(ngoziItems.body.items).toHaveLength(0);
     expect((await request(app).post('/api/rider/stall-pickups').set(as('rider'))
-      .send({ vendorId: 'v-ngozi', batchDate: date, batchSlotId: 'midday', photoUrl: PHOTO })).body.error.code).toBe('NOTHING_TO_COLLECT');
+      .send({ vendorId: 'v-ngozi', batchDate: date, batchSlotId: 'evening', photoUrl: PHOTO })).body.error.code).toBe('NOTHING_TO_COLLECT');
     const emeka = await request(app).post('/api/rider/stall-pickups').set(as('rider'))
-      .send({ vendorId: 'v-emeka', batchDate: date, batchSlotId: 'midday', photoUrl: PHOTO });
+      .send({ vendorId: 'v-emeka', batchDate: date, batchSlotId: 'evening', photoUrl: PHOTO });
     expect(emeka.body.ordersInTransit).toBe(1); // everything still due has been collected
 
     const mine = await request(app).get(`/api/orders/${order.id}`).set(as('ada'));
@@ -189,8 +189,9 @@ describe('layer 3: no trader at the locked price → refund the line item to the
   });
 
   it('cancelling after a partial refund never refunds the same item twice', async () => {
-    const date = freshDate();
-    const order = await orderAt(date, [{ productId: 'sku-beans', qty: 1 }, { productId: 'sku-garri', qty: 1 }]);
+    // Cancelling is only allowed before the cutoff, so this stays in the real (open) batch.
+    const order = await orderAt(null, [{ productId: 'sku-beans', qty: 1 }, { productId: 'sku-garri', qty: 1 }]);
+    const date = order.batchDate;
     const before = await wallet();
     await reportAsVendor('ngozi', { productId: 'sku-beans', batchDate: date, newWholesalePriceKobo: 6000 * N });
     const res = await request(app).post(`/api/orders/${order.id}/cancel`).set(as('ada'));
@@ -216,7 +217,7 @@ describe('who can report a price change', () => {
     const date = freshDate();
     await orderAt(date, [{ productId: 'sku-rice', qty: 1 }]);
     const res = await request(app).post('/api/admin/vendors/v-emeka/price-change').set(as('admin'))
-      .send({ productId: 'sku-rice', batchDate: date, batchSlotId: 'midday', newWholesalePriceKobo: 4800 * N });
+      .send({ productId: 'sku-rice', batchDate: date, batchSlotId: 'evening', newWholesalePriceKobo: 4800 * N });
     expect(res.body.absorbed).toBe(1);
     expect((await request(app).post('/api/vendor/price-change').set(as('ada')).send({})).status).toBe(403);
     expect((await request(app).post('/api/admin/vendors/v-emeka/price-change').set(as('rider')).send({})).status).toBe(403);

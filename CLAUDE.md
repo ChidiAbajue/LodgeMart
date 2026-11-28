@@ -188,3 +188,10 @@ Business constants: `server/src/config/business.js`. Batch date = today if befor
   refuses http CLIENT_URL / unencrypted remote DB / JWT_SECRET < 48. Logger also redacts x-paystack-signature.
   181/181 ×3. Not yet run against real Supabase/Upstash/Render (no accounts) — first-deploy checklist in DEPLOYMENT.md.
   Deferred by user: vendor "remove item" and "request new product → admin approves".
+- **2026-11-28 — Single evening batch (Chidi).** One batch Mon–Sat: orders 3 PM → 3 PM, cutoff 3 PM (batch goes to
+  vendors, no more cancelling → 409 `BATCH_LOCKED`), stalls packed by 4 PM, campus pickup from 5 PM. Orders after
+  Saturday's cutoff or on Sunday join Monday's batch. Old `early`/`midday` slots kept as inactive rows (`BatchSlot.isActive`,
+  migration `single_evening_batch`) so history stays valid. Vendors only see a batch after its cutoff (never cancelled /
+  unpaid orders). Order view has `batchLocked`. 220/220 tests (new phase10). Frontend vendor/rider/admin portals now on
+  the API (camera + file-input fallback, dwell timer, kiosk, stall photo upload, onboarding, goods & prices, priority,
+  payouts, unit economics). Dev-only: without Cloudinary the rider page uses a placeholder photo URL.

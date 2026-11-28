@@ -34,5 +34,10 @@ export const HUB_DWELL_MINUTES = 20;
 // Issue tags offered by the rating modal (src/components/ItemRatingModal.jsx).
 export const ISSUE_TAGS = ['Short measure', 'Weevils / Dusty', 'Damaged pack', 'Missing item'];
 
+// Batches run Monday–Saturday. An order that would land on a day off joins the
+// next delivery day (e.g. after Saturday's 3 PM cutoff → Monday's batch).
+// 0 = Sunday … 6 = Saturday.
+export const NO_DELIVERY_WEEKDAYS = [0];
+
 // Africa/Lagos is UTC+1 all year (no daylight saving).
 export const LAGOS_UTC_OFFSET_MINUTES = 60;

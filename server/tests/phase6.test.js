@@ -10,7 +10,7 @@ import { planRating } from '../src/services/ratingService.js';
 const app = createApp();
 const TEST_DOMAIN = '@phase6.test';
 const N = 100;
-const BASE = { zoneId: 'ifite', hubId: 'dynamo-junction', batchSlotId: 'midday', paymentMethod: 'WALLET' };
+const BASE = { zoneId: 'ifite', hubId: 'dynamo-junction', batchSlotId: 'evening', paymentMethod: 'WALLET' };
 
 let inventorySnapshot, vendorSnapshot;
 const tokens = {};

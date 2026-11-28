@@ -19,7 +19,7 @@ const vendorIdsOf = async (orderId) => (await prisma.orderItem.findMany({ where:
 const TEST_DOMAIN = '@phase8.test';
 const N = 100;
 const PHOTO = 'https://res.cloudinary.com/lodgemart-test/image/upload/v1/lodgemart/stall-pickups/s.jpg';
-const BASE = { zoneId: 'ifite', hubId: 'dynamo-junction', batchSlotId: 'midday', paymentMethod: 'WALLET' };
+const BASE = { zoneId: 'ifite', hubId: 'dynamo-junction', batchSlotId: 'evening', paymentMethod: 'WALLET' };
 
 let inventorySnapshot, vendorSnapshot;
 const tokens = {};
@@ -43,9 +43,9 @@ async function readyAtHub(items = [{ productId: 'sku-rice', qty: 1 }]) {
   const date = freshDate();
   const order = await orderAt(date, items);
   for (const v of new Set(await vendorIdsOf(order.id))) {
-    await request(app).post('/api/rider/stall-pickups').set(as('rider')).send({ vendorId: v, batchDate: date, batchSlotId: 'midday', photoUrl: PHOTO });
+    await request(app).post('/api/rider/stall-pickups').set(as('rider')).send({ vendorId: v, batchDate: date, batchSlotId: 'evening', photoUrl: PHOTO });
   }
-  await request(app).post('/api/rider/hub-arrivals').set(as('rider')).send({ hubId: 'dynamo-junction', batchDate: date, batchSlotId: 'midday' });
+  await request(app).post('/api/rider/hub-arrivals').set(as('rider')).send({ hubId: 'dynamo-junction', batchDate: date, batchSlotId: 'evening' });
   return { date, order };
 }
 const kiosk = (orderId) => request(app).post('/api/rider/kiosk-drop').set(as('rider')).send({ orderId });
@@ -204,10 +204,10 @@ describe('hub dwell timer + junction kiosk fallback', () => {
     const date = freshDate();
     const order = await orderAt(date, [{ productId: 'sku-rice', qty: 1 }]);
     await request(app).post(`/api/orders/${order.id}/delegate`).set(as('ada')).send({ name: 'Obinna Okeke', phone: '08035556666' });
-    await request(app).post('/api/rider/stall-pickups').set(as('rider')).send({ vendorId: 'v-emeka', batchDate: date, batchSlotId: 'midday', photoUrl: PHOTO });
-    await request(app).post('/api/rider/hub-arrivals').set(as('rider')).send({ hubId: 'dynamo-junction', batchDate: date, batchSlotId: 'midday' });
+    await request(app).post('/api/rider/stall-pickups').set(as('rider')).send({ vendorId: 'v-emeka', batchDate: date, batchSlotId: 'evening', photoUrl: PHOTO });
+    await request(app).post('/api/rider/hub-arrivals').set(as('rider')).send({ hubId: 'dynamo-junction', batchDate: date, batchSlotId: 'evening' });
 
-    const res = await request(app).get(`/api/rider/manifest?batchDate=${date}&batchSlotId=midday`).set(as('rider'));
+    const res = await request(app).get(`/api/rider/manifest?batchDate=${date}&batchSlotId=evening`).set(as('rider'));
     const hub = res.body.hubs[0];
     expect(res.body.hubDwellMinutes).toBe(20);
     expect(new Date(hub.dwellEndsAt) - new Date(hub.arrivedAt)).toBe(20 * 60_000);

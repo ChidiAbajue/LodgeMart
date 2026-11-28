@@ -105,6 +105,7 @@ model BatchSlot {
   cutoffTime String
   badge      String?
   sortOrder  Int    @default(0)
+  isActive   Boolean @default(true) // only active slots take new orders (2026-11-28: evening only)
 
   orders       Order[]
   stallPickups StallPickup[]

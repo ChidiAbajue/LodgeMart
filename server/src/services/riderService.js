@@ -42,7 +42,7 @@ export async function getManifest({ batchDate, batchSlotId }) {
           where: { refundedAt: null },
           select: {
             qty: true, vendorPacked: true, riderPickedUp: true,
-            product: { select: { name: true, unit: true } },
+            product: { select: { id: true, name: true, unit: true } },
             vendor: { select: { id: true, name: true, stallNumber: true, market: true } },
           },
         },

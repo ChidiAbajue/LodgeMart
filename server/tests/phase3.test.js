@@ -14,7 +14,7 @@ const vendorIdsOf = async (orderId) => (await prisma.orderItem.findMany({ where:
 
 const TEST_DOMAIN = '@phase3.test';
 const N = 100; // kobo per naira
-const BASE = { zoneId: 'ifite', hubId: 'dynamo-junction', batchSlotId: 'midday', paymentMethod: 'WALLET' };
+const BASE = { zoneId: 'ifite', hubId: 'dynamo-junction', batchSlotId: 'evening', paymentMethod: 'WALLET' };
 
 let inventorySnapshot, vendorSnapshot;
 const students = {}; // name -> { id, token }
@@ -146,7 +146,7 @@ describe('catalog', () => {
     expect(res.body.products).toHaveLength(8);
     expect(res.body.zones.find((z) => z.id === 'ifite').hubs.map((h) => h.id).sort())
       .toEqual(['dynamo-junction', 'school-gate']);
-    expect(res.body.batchSlots.map((s) => s.id)).toEqual(['early', 'midday', 'evening']);
+    expect(res.body.batchSlots.map((s) => s.id)).toEqual(['evening']);
     expect(res.body.batchSlots[0].nextBatchDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(res.body.fees.cancellationFeeKobo).toBe(20000);
     expect(res.body.fees.deliveryFee).toMatchObject({ standardKobo: 35000, largeKobo: 60000, bulkItemSurchargeKobo: 25000 });

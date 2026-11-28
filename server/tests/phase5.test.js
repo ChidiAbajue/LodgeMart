@@ -15,7 +15,7 @@ import { monnify, payOnMonnify, signWebhook } from './fakeMonnify.js';
 const app = createApp();
 const TEST_DOMAIN = '@phase5.test';
 const N = 100;
-const BASE = { zoneId: 'ifite', hubId: 'dynamo-junction', batchSlotId: 'midday' };
+const BASE = { zoneId: 'ifite', hubId: 'dynamo-junction', batchSlotId: 'evening' };
 
 let inventorySnapshot, vendorSnapshot;
 const tokens = {};
@@ -48,7 +48,7 @@ let payoutDay = 0;
 async function makePickup(vendorId, payoutKobo, status = 'PENDING') {
   return prisma.stallPickup.create({
     data: {
-      vendorId, riderId: ids.rider, batchSlotId: 'midday', payoutKobo, payoutStatus: status,
+      vendorId, riderId: ids.rider, batchSlotId: 'evening', payoutKobo, payoutStatus: status,
       batchDate: new Date(Date.UTC(2024, 0, 1 + payoutDay++)),
       photoUrl: 'https://res.cloudinary.com/lodgemart-test/image/upload/v1/lodgemart/stall-pickups/x.jpg',
     },
@@ -435,7 +435,7 @@ describe('stall photo uploads (Cloudinary)', () => {
 
   it('stall pickups only accept photos from our Cloudinary folder', async () => {
     const res = await request(app).post('/api/rider/stall-pickups').set(as('rider'))
-      .send({ vendorId: 'v-emeka', batchDate: '2024-06-01', batchSlotId: 'midday', photoUrl: 'https://evil.example.com/lodgemart/stall-pickups/a.jpg' });
+      .send({ vendorId: 'v-emeka', batchDate: '2024-06-01', batchSlotId: 'evening', photoUrl: 'https://evil.example.com/lodgemart/stall-pickups/a.jpg' });
     expect(res.body.error.code).toBe('INVALID_PHOTO');
   });
 });

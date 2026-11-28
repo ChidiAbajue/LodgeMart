@@ -35,19 +35,23 @@ async function clearKeys() {
 }
 
 // Place a real order through the API, then move it into a test batch.
-async function orderFor(date, items, { hubId = 'dynamo-junction', who = 'ada' } = {}) {
+// `beforeLock` runs while the batch is still open (e.g. cancel, which is only
+// allowed before the cutoff).
+async function orderFor(date, items, { hubId = 'dynamo-junction', who = 'ada', beforeLock } = {}) {
   const res = await request(app).post('/api/orders').set(as(who)).send({
-    items, zoneId: 'ifite', hubId, batchSlotId: 'midday', paymentMethod: 'WALLET',
+    items, zoneId: 'ifite', hubId, batchSlotId: 'evening', paymentMethod: 'WALLET',
   });
   if (res.status !== 201) throw new Error(JSON.stringify(res.body));
+  if (beforeLock) await beforeLock(res.body.order);
   await prisma.order.update({ where: { id: res.body.order.id }, data: { batchDate: new Date(`${date}T00:00:00Z`) } });
   return res.body.order;
 }
+const cancelAs = (who) => (order) => request(app).post(`/api/orders/${order.id}/cancel`).set(as(who));
 const pickup = (date, vendorId, who = 'rider') =>
   request(app).post('/api/rider/stall-pickups').set(as(who))
-    .send({ vendorId, batchDate: date, batchSlotId: 'midday', photoUrl: PHOTO });
+    .send({ vendorId, batchDate: date, batchSlotId: 'evening', photoUrl: PHOTO });
 const arrive = (date, hubId = 'dynamo-junction') =>
-  request(app).post('/api/rider/hub-arrivals').set(as('rider')).send({ hubId, batchDate: date, batchSlotId: 'midday' });
+  request(app).post('/api/rider/hub-arrivals').set(as('rider')).send({ hubId, batchDate: date, batchSlotId: 'evening' });
 const handover = (orderId, pin) =>
   request(app).post('/api/rider/handover').set(as('rider')).send({ orderId, pin });
 const orderRow = (id) => prisma.order.findUnique({ where: { id }, include: { items: true } });
@@ -159,10 +163,9 @@ describe('vendor: packing', () => {
   });
 
   it("can't pack another stall's item (404) or a cancelled order's item (409)", async () => {
-    const order = await orderFor(freshDate(), [{ productId: 'sku-rice', qty: 1 }]);
+    const order = await orderFor(freshDate(), [{ productId: 'sku-rice', qty: 1 }], { beforeLock: cancelAs('ada') });
     const itemId = order.items[0].id;
     expect((await request(app).patch(`/api/vendor/items/${itemId}/packed`).set(as('ngozi')).send({ packed: true })).status).toBe(404);
-    await request(app).post(`/api/orders/${order.id}/cancel`).set(as('ada'));
     const res = await request(app).patch(`/api/vendor/items/${itemId}/packed`).set(as('emeka')).send({ packed: true });
     expect(res.status).toBe(409);
   });
@@ -205,7 +208,7 @@ describe('rider: manifest', () => {
     await orderFor(date, [{ productId: 'sku-garri', qty: 1 }], { hubId: 'school-gate', who: 'bayo' });
     await request(app).post(`/api/orders/${o1.id}/delegate`).set(as('ada')).send({ name: 'Obinna Roommate', phone: '08035556666' });
 
-    const res = await request(app).get(`/api/rider/manifest?batchDate=${date}&batchSlotId=midday`).set(as('rider'));
+    const res = await request(app).get(`/api/rider/manifest?batchDate=${date}&batchSlotId=evening`).set(as('rider'));
     expect(res.status).toBe(200);
     expect(res.body.batch).toMatchObject({ batchDate: date, pickupOpen: true });
     expect(res.body.stalls.map((s) => s.vendor.id).sort()).toEqual(['v-emeka', 'v-ngozi']);
@@ -217,7 +220,7 @@ describe('rider: manifest', () => {
   });
 
   it('validates the query', async () => {
-    expect((await request(app).get('/api/rider/manifest?batchDate=tomorrow&batchSlotId=midday').set(as('rider'))).status).toBe(400);
+    expect((await request(app).get('/api/rider/manifest?batchDate=tomorrow&batchSlotId=evening').set(as('rider'))).status).toBe(400);
   });
 });
 
@@ -273,42 +276,31 @@ describe('rider: stall pickup', () => {
     expect((await pickup(tomorrow, 'v-emeka')).body.error.code).toBe('BEFORE_CUTOFF');
     expect((await pickup(freshDate(), 'v-emeka')).body.error.code).toBe('NOTHING_TO_COLLECT');
     const res = await request(app).post('/api/rider/stall-pickups').set(as('rider'))
-      .send({ vendorId: 'v-emeka', batchDate: freshDate(), batchSlotId: 'midday', photoUrl: 'http://x.com/a.jpg' });
+      .send({ vendorId: 'v-emeka', batchDate: freshDate(), batchSlotId: 'evening', photoUrl: 'http://x.com/a.jpg' });
     expect(res.status).toBe(400);
   });
 
   it('skips cancelled orders', async () => {
     const date = freshDate();
-    const order = await orderFor(date, [{ productId: 'sku-rice', qty: 1 }]);
-    await request(app).post(`/api/orders/${order.id}/cancel`).set(as('ada'));
+    await orderFor(date, [{ productId: 'sku-rice', qty: 1 }], { beforeLock: cancelAs('ada') });
     expect((await pickup(date, 'v-emeka')).body.error.code).toBe('NOTHING_TO_COLLECT');
   });
 });
 
 describe('cancel vs pickup', () => {
-  it('cannot cancel once any stall has been collected (vendor already paid)', async () => {
+  // Pickups only happen after the cutoff and cancelling stops at the cutoff,
+  // so the two can never overlap: a locked order is refused before any refund.
+  it('cannot cancel once the batch is with the vendors, before or after a stall pickup', async () => {
     const date = freshDate();
     const order = await orderFor(date, [{ productId: 'sku-rice', qty: 1 }, { productId: 'sku-beans', qty: 1 }]);
-    await pickup(date, 'v-emeka');
     const before = (await prisma.user.findUnique({ where: { id: ids.ada } })).walletBalanceKobo;
-    const res = await request(app).post(`/api/orders/${order.id}/cancel`).set(as('ada'));
-    expect(res.status).toBe(409);
+    const locked = await request(app).post(`/api/orders/${order.id}/cancel`).set(as('ada'));
+    expect(locked.status).toBe(409);
+    expect(locked.body.error.code).toBe('BATCH_LOCKED');
+    await pickup(date, 'v-emeka');
+    expect((await request(app).post(`/api/orders/${order.id}/cancel`).set(as('ada'))).body.error.code).toBe('BATCH_LOCKED');
     expect((await prisma.user.findUnique({ where: { id: ids.ada } })).walletBalanceKobo).toBe(before);
-  });
-
-  it('a cancel racing a pickup never ends with both a refund and a vendor payout', async () => {
-    for (let i = 0; i < 5; i++) {
-      const date = freshDate();
-      const order = await orderFor(date, [{ productId: 'sku-rice', qty: 1 }]);
-      await Promise.all([
-        pickup(date, 'v-emeka'),
-        request(app).post(`/api/orders/${order.id}/cancel`).set(as('ada')),
-      ]);
-      const row = await orderRow(order.id);
-      const picked = row.items.some((it) => it.riderPickedUp);
-      expect(row.status === 'CANCELLED' && picked).toBe(false);
-      expect(row.status === 'CANCELLED' || picked).toBe(true);
-    }
+    expect((await orderRow(order.id)).status).not.toBe('CANCELLED');
   });
 });
 

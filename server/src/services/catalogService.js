@@ -27,13 +27,13 @@ export async function getCatalog(now = new Date()) {
       orderBy: { name: 'asc' },
       select: { id: true, name: true, hubs: { select: { hub: { select: { id: true, name: true } } } } },
     }),
-    prisma.batchSlot.findMany({ orderBy: { sortOrder: 'asc' } }),
+    prisma.batchSlot.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } }),
   ]);
 
   return {
     products: products.map(({ inventory, ...p }) => ({ ...p, inStock: inventory.length > 0 })),
     zones: zones.map((z) => ({ id: z.id, name: z.name, hubs: z.hubs.map((h) => h.hub) })),
-    batchSlots: slots.map(({ sortOrder, ...s }) => ({ // eslint-disable-line no-unused-vars
+    batchSlots: slots.map(({ sortOrder, isActive, ...s }) => ({ // eslint-disable-line no-unused-vars
       ...s,
       nextBatchDate: toDateString(batchDateFor(s, now)), // the batch an order placed now would join
     })),

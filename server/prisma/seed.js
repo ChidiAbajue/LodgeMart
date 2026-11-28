@@ -42,10 +42,14 @@ const hubs = [
   { id: 'school-gate', name: 'School Gate' },
   { id: 'aroma-junction', name: 'Aroma Junction' },
 ];
+// One evening batch, Monday–Saturday (decision 2026-11-28). Orders run 3 PM → 3 PM;
+// at the 3 PM cutoff the batch goes to vendors (no more cancelling), stalls finish
+// packing by 4 PM, the rider is back on campus for pickup from 5 PM.
+// The old early/midday slots stay as inactive rows so past orders keep their slot.
 const slots = [
-  { id: 'early', label: 'Early Bird', startTime: '07:30', endTime: '08:00', cutoffTime: '06:45', badge: 'Pre-Lecture', sortOrder: 1 },
-  { id: 'midday', label: 'Midday Break', startTime: '13:00', endTime: '14:00', cutoffTime: '12:15', badge: 'Most Popular', sortOrder: 2 },
-  { id: 'evening', label: 'Evening Hostel', startTime: '17:30', endTime: '18:30', cutoffTime: '16:45', badge: 'After Class', sortOrder: 3 },
+  { id: 'evening', label: 'Evening Delivery', startTime: '17:00', endTime: '18:30', cutoffTime: '15:00', badge: 'Mon – Sat', sortOrder: 1, isActive: true },
+  { id: 'early', label: 'Early Bird', startTime: '07:30', endTime: '08:00', cutoffTime: '06:45', badge: 'Retired', sortOrder: 8, isActive: false },
+  { id: 'midday', label: 'Midday Break', startTime: '13:00', endTime: '14:00', cutoffTime: '12:15', badge: 'Retired', sortOrder: 9, isActive: false },
 ];
 const products = [
   ['sku-rice', 'Local Parboiled Rice', '1 Paint Bucket (4kg)', 'Grains & Staples', 5200, 6800, '🍚'],
@@ -166,14 +170,19 @@ async function main() {
     ['sku-beans', 'v-ngozi', 6100, 5500],
   ];
   const subtotal = items.reduce((s, [, , price]) => s + k(price), 0);
-  const today = new Date(new Date().toISOString().slice(0, 10));
+  // Put it in the newest batch already sent to vendors (cutoff 15:00 Lagos, no
+  // Sunday batch), so the vendor / rider demo works at any time of day.
+  const lagosNow = new Date(Date.now() + 60 * 60_000);
+  const today = new Date(lagosNow.toISOString().slice(0, 10));
+  if (lagosNow.toISOString().slice(11, 16) < '15:00') today.setUTCDate(today.getUTCDate() - 1);
+  while (today.getUTCDay() === 0) today.setUTCDate(today.getUTCDate() - 1);
   await prisma.order.create({
     data: {
       orderNumber: 4082,
       studentId: created['chinedu.unizik@gmail.com'].id,
       zoneId: 'ifite',
       hubId: 'dynamo-junction',
-      batchSlotId: 'midday',
+      batchSlotId: 'evening',
       batchDate: today,
       status: 'ORDER_PLACED',
       pickupPin: '4829',

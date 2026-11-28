@@ -1,8 +1,16 @@
 import { prisma } from '../config/prisma.js';
 import { AppError, forbidden, notFound } from '../utils/errors.js';
-import { fromDateString, toDateString } from '../utils/batchDate.js';
+import { fromDateString, latestClosedBatchDate, toDateString } from '../utils/batchDate.js';
 
 const OPEN = ['ORDER_PLACED', 'PACKED_AT_MARKET']; // still at the market
+
+// Vendors only see a batch once its cutoff (3 PM) has passed: until then
+// students can still cancel, so the order list isn't final. Returns a Prisma
+// `order` filter: for each slot, batch dates up to the newest closed one.
+export async function closedBatchFilter(now = new Date()) {
+  const slots = await prisma.batchSlot.findMany({ select: { id: true, cutoffTime: true } });
+  return { OR: slots.map((s) => ({ batchSlotId: s.id, batchDate: { lte: latestClosedBatchDate(s, now) } })) };
+}
 
 // A vendor login is linked to exactly one stall.
 export function vendorIdOf(user) {
@@ -49,11 +57,13 @@ export async function getDashboard(user) {
 // PIN or contact details — vendors only need order number, hub and batch.
 export async function listItems(user, { batchDate, batchSlotId }) {
   const vendorId = vendorIdOf(user);
+  const closed = await closedBatchFilter();
   const items = await prisma.orderItem.findMany({
     where: {
       vendorId,
       order: {
-        status: { notIn: ['CANCELLED', 'PENDING_PAYMENT'] }, // unpaid card orders aren't packed yet
+        ...closed, // batches still open to students are hidden
+        status: { notIn: ['CANCELLED', 'PENDING_PAYMENT'] }, // unpaid transfer orders aren't packed
         ...(batchDate && { batchDate: fromDateString(batchDate) }),
         ...(batchSlotId && { batchSlotId }),
       },
@@ -85,7 +95,11 @@ export async function listItems(user, { batchDate, batchSlotId }) {
 export async function setPacked(user, itemId, packed) {
   const vendorId = vendorIdOf(user);
   return prisma.$transaction(async (tx) => {
-    const item = await tx.orderItem.findFirst({ where: { id: itemId, vendorId, refundedAt: null }, select: { orderId: true, riderPickedUp: true } });
+    const closed = await closedBatchFilter();
+    const item = await tx.orderItem.findFirst({
+      where: { id: itemId, vendorId, refundedAt: null, order: closed }, // open batches aren't visible yet
+      select: { orderId: true, riderPickedUp: true },
+    });
     if (!item) throw notFound('Item not found');
     if (item.riderPickedUp) throw new AppError(409, 'ALREADY_PICKED_UP', 'The rider has already collected this item');
 

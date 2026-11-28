@@ -4,13 +4,15 @@ import { env } from '../config/env.js';
 import { CANCELLATION_FEE_KOBO } from '../config/business.js';
 import { AppError, notFound } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
-import { batchDateFor, toDateString } from '../utils/batchDate.js';
+import { batchDateFor, isPastCutoff, toDateString } from '../utils/batchDate.js';
 import { routeBasket } from './routingService.js';
 import { routableVendor } from './catalogService.js';
 import { quoteDelivery } from '../utils/deliveryFee.js';
 import * as monnify from './monnifyClient.js';
 
-const CANCELLABLE = ['PENDING_PAYMENT', 'ORDER_PLACED', 'PACKED_AT_MARKET']; // before the rider has picked up
+// Paid orders can be cancelled only until the batch cutoff (3 PM): at cutoff the
+// batch is sent to vendors to pack. Unpaid transfer orders can always be dropped.
+const CANCELLABLE = ['PENDING_PAYMENT', 'ORDER_PLACED'];
 const DELEGATABLE = ['ORDER_PLACED', 'PACKED_AT_MARKET', 'RIDER_IN_TRANSIT', 'READY_AT_HUB'];
 const MAX_STOCK_RACE_RETRIES = 3;
 
@@ -25,7 +27,7 @@ const orderSelect = {
   status: true,
   zone: { select: { id: true, name: true } },
   hub: { select: { id: true, name: true } },
-  batchSlot: { select: { id: true, label: true, startTime: true, endTime: true } },
+  batchSlot: { select: { id: true, label: true, startTime: true, endTime: true, cutoffTime: true } },
   batchDate: true,
   pickupPin: true,
   delegateName: true,
@@ -77,6 +79,8 @@ function toView(order, viewer) {
     orderLabel: `#${order.orderNumber}`,
     batchDate: toDateString(batchDate),
     items: items.map(({ vendor, ...item }) => (isAdmin ? { ...item, vendor } : item)),
+    // Until the batch cutoff the student may still cancel; after it the batch is with vendors.
+    batchLocked: isPastCutoff(order.batchSlot, batchDate),
     ...(showPin && { pickupPin }),
   };
 }
@@ -90,7 +94,7 @@ async function loadOrderInputs({ items, zoneId, hubId, batchSlotId }) {
     prisma.product.findMany({ where: { id: { in: items.map((i) => i.productId) }, isActive: true } }),
   ]);
   if (!zoneHub) throw new AppError(400, 'INVALID_HUB', 'That pickup hub is not in your campus zone');
-  if (!slot) throw new AppError(400, 'INVALID_BATCH_SLOT', 'Unknown delivery batch');
+  if (!slot || !slot.isActive) throw new AppError(400, 'INVALID_BATCH_SLOT', 'Unknown delivery batch');
   const byId = new Map(products.map((p) => [p.id, p]));
   const missing = items.find((i) => !byId.has(i.productId));
   if (missing) {
@@ -372,9 +376,13 @@ export async function cancelOrder(student, id) {
   return prisma.$transaction(async (tx) => {
     const order = await tx.order.findFirst({
       where: { id, studentId: student.id },
-      select: { id: true, status: true, totalKobo: true },
+      select: { id: true, status: true, totalKobo: true, batchDate: true, batchSlot: { select: { cutoffTime: true } } },
     });
     if (!order) throw notFound('Order not found');
+    // Paid orders lock at the batch cutoff: the batch has gone to vendors to pack.
+    if (order.status !== 'PENDING_PAYMENT' && order.status !== 'CANCELLED' && isPastCutoff(order.batchSlot, order.batchDate)) {
+      throw new AppError(409, 'BATCH_LOCKED', `Orders can't be cancelled after the ${order.batchSlot.cutoffTime} cutoff: your batch is already with the vendors`);
+    }
 
     // Line items already refunded by the price-spike safeguard aren't refunded twice.
     const refunded = await tx.orderItem.aggregate({ where: { orderId: id, refundedAt: { not: null } }, _sum: { refundKobo: true } });
