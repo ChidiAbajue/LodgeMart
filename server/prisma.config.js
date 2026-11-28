@@ -12,6 +12,8 @@ export default defineConfig({
     seed: 'node prisma/seed.js',
   },
   datasource: {
-    url: env('DATABASE_URL'),
+    // CLI only (migrate/seed). On Supabase set MIGRATE_DATABASE_URL to the same
+    // database URL with ?sslmode=require; the running app uses DATABASE_URL + DATABASE_SSL.
+    url: process.env.MIGRATE_DATABASE_URL || env('DATABASE_URL'),
   },
 });

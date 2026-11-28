@@ -42,6 +42,14 @@ campus pickup hubs, with PIN handover, roommate delegation, and line-item vendor
 | 17 | Secure DB access | Prisma only (parameterised); no raw SQL with user input; least-privilege DB user in production |
 | 18 | No mistakes | Tests per phase + manual run + this checklist before every commit |
 
+## Key docs
+
+- `docs/API.md` — every endpoint for the frontend (Chidi), prototype function → API mapping, sample client.
+- `docs/DEPLOYMENT.md` — Supabase + Upstash + Render go-live steps and first-deploy checklist.
+- `HANDOVER.md` — resume guide (branches, setup, status).
+- Deployment decision 2026-11-28: keep our Express API (money/stock/PIN rules); Supabase only as hosted Postgres
+  (its Auth/REST/Storage are NOT used; tables locked with RLS), Upstash for Redis, Render for the API.
+
 ## Local setup (backend)
 
 ```bash
@@ -68,7 +76,7 @@ ogaemeka@lodgemart.ng / mamangozi@lodgemart.ng (vendor), tunde.dispatch@lodgemar
 | 4 | Vendor + rider: packing, stall pickup (per batch), hub arrival, PIN handover (single-use, rate-limited) | ✅ Verified 2026-11-28 — 111/111 tests, manual run, 0 audit vulns |
 | 5 | Paystack (test mode): initialize, webhook (signature + idempotency), vendor transfers; photo upload | 🟨 Built 2026-11-28 — 137/137 tests (Paystack mocked), manual run without keys OK, 0 audit vulns. **Pending: manual run with real Paystack TEST keys + Cloudinary** |
 | 6 | Ratings + admin summary | ✅ Verified 2026-11-28 — 167/167 tests, manual run, 0 audit vulns |
-| 7 | API docs for Chidi; frontend wiring support; deploy API (Render/Railway) | ⬜ |
+| 7 | API docs for Chidi; frontend wiring support; deploy API (Render/Railway) | ✅ Built + verified locally 2026-11-28 — 181/181 tests, 0 audit vulns. **Not yet deployed** (needs user's Supabase/Upstash/Render/Paystack/Cloudinary accounts — follow docs/DEPLOYMENT.md) |
 
 ## Backend folder layout (`server/src/`)
 
@@ -171,3 +179,12 @@ Business constants: `server/src/config/business.js`. Batch date = today if befor
   (no PINs), staff accounts (VENDOR with stall+bank / RIDER / ADMIN; students only via public sign-up), disable user
   (immediate), vendor edit (bank change clears Paystack recipient). 167/167 ×3. Manual: #4082 delivered → 2★ flag beans
   → Ngozi 4.6→4.47, Emeka 4.8→4.81, profit ₦1,650, pending payouts ₦12,650.
+- **2026-11-28 — Phase 7 built** on `backend/phase-7-deploy-docs`. `docs/API.md` (34 endpoints, prototype mapping,
+  fetch client, card-payment + photo flows), `docs/DEPLOYMENT.md`, `render.yaml` (Render blueprint, rootDir server).
+  Migration `lock_down_direct_table_access` (RLS on every table, revoke anon/authenticated if present; test asserts
+  every table has RLS). Seed: `SEED_MODE=reference` (upsert-only zones/hubs/slots/products, `npm run db:seed:reference`);
+  sample seed refuses NODE_ENV=production. `npm run create-admin` (env-only password, ≥12 chars, never printed).
+  Env: `DATABASE_SSL` off|require|verify + `DATABASE_CA_CERT`, `MIGRATE_DATABASE_URL` for prisma CLI; production
+  refuses http CLIENT_URL / unencrypted remote DB / JWT_SECRET < 48. Logger also redacts x-paystack-signature.
+  181/181 ×3. Not yet run against real Supabase/Upstash/Render (no accounts) — first-deploy checklist in DEPLOYMENT.md.
+  Deferred by user: vendor "remove item" and "request new product → admin approves".

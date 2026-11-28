@@ -167,7 +167,8 @@ describe('env safety', () => {
     expect(() => parseEnv({ ...base, NODE_ENV: 'development', PAYSTACK_SECRET_KEY: 'sk_live_abc123' }))
       .toThrow(/LIVE key/);
     try { parseEnv({ ...base, PAYSTACK_SECRET_KEY: 'sk_live_abc123' }); } catch (e) { expect(e.message).not.toContain('abc123'); }
-    expect(parseEnv({ ...base, NODE_ENV: 'production', PAYSTACK_SECRET_KEY: 'sk_live_abc123' }).PAYSTACK_SECRET_KEY).toBe('sk_live_abc123');
+    const prod = { ...base, NODE_ENV: 'production', CLIENT_URL: 'https://a.com', JWT_SECRET: 'y'.repeat(48), DATABASE_SSL: 'require' };
+    expect(parseEnv({ ...prod, PAYSTACK_SECRET_KEY: 'sk_live_abc123' }).PAYSTACK_SECRET_KEY).toBe('sk_live_abc123');
   });
   it('validates key and Cloudinary URL formats', () => {
     expect(() => parseEnv({ ...base, PAYSTACK_SECRET_KEY: 'pk_test_wrongkind' })).toThrow(/PAYSTACK_SECRET_KEY/);

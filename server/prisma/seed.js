@@ -5,10 +5,29 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcryptjs';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
+// Same TLS setting as the app (DATABASE_SSL: off | require | verify + DATABASE_CA_CERT).
+const ssl = process.env.DATABASE_SSL === 'require'
+  ? { rejectUnauthorized: false }
+  : process.env.DATABASE_SSL === 'verify'
+    ? { rejectUnauthorized: true, ca: process.env.DATABASE_CA_CERT }
+    : undefined;
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL, ...(ssl && { ssl }) }),
 });
 const k = (naira) => naira * 100; // naira -> kobo
+
+// Two modes:
+//   SEED_MODE=sample (default)  — WIPES the database and loads the prototype's sample
+//                                 data incl. sandbox logins (password123). Dev/test only.
+//   SEED_MODE=reference         — production-safe: only adds missing campus zones, hubs,
+//                                 batch slots and products. Never deletes or overwrites.
+const MODE = process.env.SEED_MODE || 'sample';
+if (!['sample', 'reference'].includes(MODE)) throw new Error(`Unknown SEED_MODE "${MODE}"`);
+if (process.env.NODE_ENV === 'production' && MODE !== 'reference') {
+  console.error('Refusing to run the sample seed in production (it wipes data and creates demo logins).');
+  console.error('Use SEED_MODE=reference for zones/hubs/slots/products, and npm run create-admin for the first admin.');
+  process.exit(1);
+}
 
 // Demo password for the sandbox accounts only. Real users register with their own.
 const DEMO_PASSWORD = process.env.SEED_DEMO_PASSWORD || 'password123';
@@ -63,7 +82,30 @@ const users = [
   { email: 'ops@lodgemart.ng', name: 'Amaka Nwosu', role: 'ADMIN' },
 ];
 
+// Production-safe reference data: create what's missing, leave existing rows alone
+// (so prices or names an admin has changed are never overwritten).
+async function seedReference() {
+  for (const h of hubs) await prisma.hub.upsert({ where: { id: h.id }, create: h, update: {} });
+  for (const z of zones) {
+    await prisma.campusZone.upsert({ where: { id: z.id }, create: { id: z.id, name: z.name }, update: {} });
+    for (const hubId of z.hubs) {
+      await prisma.zoneHub.upsert({ where: { zoneId_hubId: { zoneId: z.id, hubId } }, create: { zoneId: z.id, hubId }, update: {} });
+    }
+  }
+  for (const s of slots) await prisma.batchSlot.upsert({ where: { id: s.id }, create: s, update: {} });
+  for (const [id, name, unit, category, price, kiosk, emoji] of products) {
+    await prisma.product.upsert({
+      where: { id },
+      create: { id, name, unit, category, emoji, studentPriceKobo: k(price), kioskComparePriceKobo: k(kiosk) },
+      update: {},
+    });
+  }
+  console.log(`Reference seed complete: ${zones.length} zones, ${hubs.length} hubs, ${slots.length} slots, ${products.length} products (existing rows untouched)`);
+}
+
 async function main() {
+  if (MODE === 'reference') return seedReference();
+
   // Wipe in dependency order.
   await prisma.$transaction([
     prisma.riderEarning.deleteMany(),

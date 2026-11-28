@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.9"
   },
   "scripts": {
     "dev": "node --watch --env-file=.env src/server.js",
@@ -17,7 +17,10 @@
     "db:reset": "prisma migrate reset --force",
     "db:studio": "prisma studio",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build": "prisma generate",
+    "create-admin": "node --env-file-if-exists=.env scripts/createAdmin.js",
+    "db:seed:reference": "node --env-file-if-exists=.env prisma/seedReference.js"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",

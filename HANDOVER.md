@@ -31,7 +31,9 @@ GitHub: **https://github.com/ChidiAbajue/LodgeMart** (Chidi's repo; we push bran
 | `backend/phase-2-auth` | `b8311e5` | yes | Phases 1+2 |
 | `backend/phase-3-orders` | `b14d708` | yes | Phases 1+2+3 |
 | `backend/phase-4-vendor-rider` | `1f61a33` | yes | Phases 1–4 |
-| **`backend/phase-5-payments`** | (latest) | yes | **Phases 1–5. ← CONTINUE BACKEND WORK HERE** |
+| `backend/phase-5-payments` | `95c9996` | yes | Phases 1–5 |
+| `backend/phase-6-ratings-admin` | `c75d35f` | yes | Phases 1–6 |
+| **`backend/phase-7-deploy-docs`** | (latest) | yes | **Phases 1–7 — the complete backend. ← USE THIS** |
 | `frontend/refurbish` | `a637bc1` | yes (pushed at handover) | Frontend redesign: 10 commits made on the old PC (landing, shop, login, my-orders, vendor/rider/admin portals, Vercel config). Branched from `master`. |
 
 **The backend branches stack:** each phase branch was cut from the previous one, so
@@ -69,7 +71,7 @@ We fixed it with a **git worktree**. Do the same on the new PC:
 ```bash
 git clone https://github.com/ChidiAbajue/LodgeMart.git LodgeMart            # frontend folder
 cd LodgeMart
-git worktree add ../LodgeMart-backend backend/phase-5-payments          # separate backend folder
+git worktree add ../LodgeMart-backend backend/phase-7-deploy-docs          # separate backend folder
 ```
 
 - `LodgeMart/` → frontend work (`frontend/refurbish` or `master`)
@@ -88,7 +90,7 @@ Install: **Git**, **Node.js 20+** (LTS), **Docker Desktop**, **Claude Code**.
 # 1. Get the code (see worktree layout above)
 git clone https://github.com/ChidiAbajue/LodgeMart.git LodgeMart
 cd LodgeMart
-git worktree add ../LodgeMart-backend backend/phase-5-payments
+git worktree add ../LodgeMart-backend backend/phase-7-deploy-docs
 cd ../LodgeMart-backend/server
 
 # 2. Secrets file (NOT in git: create it fresh)
@@ -106,7 +108,7 @@ npm run db:seed        # loads prototype sample data
 
 # 4. Check it works
 npm run dev            # → http://localhost:4000/api/health should say {"status":"ok"}
-npm test               # expect 137 passing (5 files)
+npm test               # expect 181 passing (7 files)
 ```
 
 **Windows notes**
@@ -157,8 +159,8 @@ tests/        phase1..phase4.test.js (vitest + supertest, against the lodgemart_
 | 3 | Catalog, wallet orders (routing, no overselling), my orders, cancel, delegate | ✅ verified, pushed |
 | 4 | Vendor packing + inventory; rider manifest, stall pickup, hub arrival, PIN handover, earnings | ✅ verified 2026-11-28, pushed |
 | 5 | Paystack (test mode): initialize, webhook, vendor transfers; photo upload | 🟨 built + 137 tests (Paystack mocked); **needs a manual run with real TEST keys** |
-| 6 | Ratings + admin summary | ⬜ |
-| 7 | API docs for Chidi, frontend wiring, deploy API (Render/Railway) | ⬜ |
+| 6 | Ratings + admin summary + staff accounts | ✅ verified 2026-11-28, pushed |
+| 7 | API docs, deployment config (Supabase/Upstash/Render), production safety | ✅ built + tested locally; **deploy needs the user's accounts** → `docs/DEPLOYMENT.md` |
 
 ### Phase 4: what was done
 - **Endpoints:** `GET /api/vendor/dashboard`, `GET /api/vendor/items`, `PATCH /api/vendor/items/:itemId/packed`,
@@ -198,6 +200,14 @@ tests/        phase1..phase4.test.js (vitest + supertest, against the lodgemart_
 3. Manual run: card order → pay on the Paystack test page (test card 4084 0840 8408 4081, any future date, CVV 408,
    PIN 0000, OTP 123456) → webhook marks it paid; run payouts; upload a photo via the signature endpoint.
 4. Mark Phase 5 ✅ in CLAUDE.md, commit, push. Then Phase 6 (ratings + admin summary).
+
+### What's left (all needs the user's accounts, nothing more to code)
+1. **Phase 5 live test:** Paystack TEST keys + Cloudinary → card payment, payout, photo upload (steps above).
+2. **Go live:** follow `docs/DEPLOYMENT.md` (Supabase, Upstash, Render, then Paystack webhook URL, then Vercel `VITE_API_URL`).
+3. **Frontend wiring (Chidi):** `docs/API.md` maps every prototype function to an endpoint, with a ready `api.js`.
+4. **PRs:** none opened yet (user's choice). `backend/phase-7-deploy-docs` contains everything. One PR from it into
+   `master` is enough. `master` on GitHub has moved since we branched (`b20812f`), so expect to merge `master` in first.
+5. **Deferred ideas (user said later):** vendor "remove item", and vendors requesting new products for admin approval.
 
 ## 6. Known gotchas
 

@@ -9,6 +9,10 @@ const envSchema = z
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().positive().default(4000),
     DATABASE_URL: z.url(),
+    // TLS to the database. Local docker: off. Supabase: "require" (encrypted) or,
+    // better, "verify" with DATABASE_CA_CERT = Supabase's CA certificate (PEM text).
+    DATABASE_SSL: z.enum(['off', 'require', 'verify']).default('off'),
+    DATABASE_CA_CERT: z.string().optional().default(''),
     REDIS_URL: z.url(),
     JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
     JWT_EXPIRES_IN: z.string().default('1d'),
@@ -34,6 +38,23 @@ const envSchema = z
       .optional()
       .default('')
       .refine((u) => u === '' || CLOUDINARY_URL_PATTERN.test(u), 'must be cloudinary://<api_key>:<api_secret>@<cloud_name>'),
+  })
+  .refine((e) => e.DATABASE_SSL !== 'verify' || e.DATABASE_CA_CERT.includes('BEGIN CERTIFICATE'), {
+    path: ['DATABASE_CA_CERT'],
+    message: 'DATABASE_SSL=verify needs the CA certificate (PEM) in DATABASE_CA_CERT',
+  })
+  // Production guard rails: refuse obviously unsafe live settings.
+  .refine((e) => e.NODE_ENV !== 'production' || e.CLIENT_URL.every((o) => o.startsWith('https://')), {
+    path: ['CLIENT_URL'],
+    message: 'in production every allowed frontend origin must be https://',
+  })
+  .refine((e) => e.NODE_ENV !== 'production' || e.DATABASE_SSL !== 'off' || /@(localhost|127\.0\.0\.1)[:/]/.test(e.DATABASE_URL), {
+    path: ['DATABASE_SSL'],
+    message: 'in production a remote database must use DATABASE_SSL=require or verify',
+  })
+  .refine((e) => e.NODE_ENV !== 'production' || e.JWT_SECRET.length >= 48, {
+    path: ['JWT_SECRET'],
+    message: 'in production JWT_SECRET must be at least 48 characters',
   })
   // Safety: live Paystack keys move real money. Only production may use them.
   .refine((e) => e.NODE_ENV === 'production' || !e.PAYSTACK_SECRET_KEY.startsWith('sk_live_'), {
