@@ -43,7 +43,7 @@ async function restoreVendors() {
       data: {
         ratingScore: v.ratingScore, ratingCount: v.ratingCount, isActive: v.isActive,
         bankName: v.bankName, bankCode: v.bankCode, bankAccountNumber: v.bankAccountNumber,
-        paystackRecipientCode: v.paystackRecipientCode,
+        priorityTier: v.priorityTier,
       },
     });
   }
@@ -113,20 +113,20 @@ describe('rating rules (unit, from the prototype)', () => {
     expect(Object.fromEntries(vendorScores)).toEqual({ 'v-emeka': 4, 'v-ngozi': 4 });
   });
   it('1–3 stars only hit the flagged item and its stall; others get 5', () => {
-    const { itemUpdates, vendorScores } = planRating(items, 2, [{ itemId: 'beans', issueTag: 'Weevils/Dusty' }]);
+    const { itemUpdates, vendorScores } = planRating(items, 2, [{ itemId: 'beans', issueTag: 'Weevils / Dusty' }]);
     expect(itemUpdates).toEqual([
       { id: 'rice', itemRating: 5, issueTag: null },
       { id: 'garri', itemRating: 5, issueTag: null },
-      { id: 'beans', itemRating: 2, issueTag: 'Weevils/Dusty' },
+      { id: 'beans', itemRating: 2, issueTag: 'Weevils / Dusty' },
     ]);
     expect(Object.fromEntries(vendorScores)).toEqual({ 'v-emeka': 5, 'v-ngozi': 2 });
   });
   it('a stall with one flagged and one good item gets the low score (once)', () => {
-    const { vendorScores } = planRating(items, 1, [{ itemId: 'garri', issueTag: 'Short Measure' }]);
+    const { vendorScores } = planRating(items, 1, [{ itemId: 'garri', issueTag: 'Short measure' }]);
     expect(vendorScores.get('v-emeka')).toBe(1);
   });
   it('flags are ignored for 4–5 stars', () => {
-    const { itemUpdates } = planRating(items, 5, [{ itemId: 'rice', issueTag: 'Damaged Pack' }]);
+    const { itemUpdates } = planRating(items, 5, [{ itemId: 'rice', issueTag: 'Damaged pack' }]);
     expect(itemUpdates[0]).toEqual({ id: 'rice', itemRating: 5, issueTag: null });
   });
 });
@@ -145,12 +145,12 @@ describe('rating an order', () => {
 
   it('2 stars flagging the beans only penalises Mama Ngozi', async () => {
     const order = await collectedOrder([{ productId: 'sku-rice', qty: 1 }, { productId: 'sku-beans', qty: 1 }]);
-    const res = await rate(order, { stars: 2, flaggedItems: [{ itemId: itemOf(order, 'sku-beans').id, issueTag: 'Weevils/Dusty' }] });
+    const res = await rate(order, { stars: 2, flaggedItems: [{ itemId: itemOf(order, 'sku-beans').id, issueTag: 'Weevils / Dusty' }] });
     expect(res.status).toBe(200);
     expect(Number((await vendorRow('v-emeka')).ratingScore)).toBe(4.81); // (4.8×24 + 5) / 25
     expect(Number((await vendorRow('v-ngozi')).ratingScore)).toBe(4.47); // (4.6×19 + 2) / 20
     const beans = await prisma.orderItem.findUnique({ where: { id: itemOf(order, 'sku-beans').id } });
-    expect(beans).toMatchObject({ itemRating: 2, issueTag: 'Weevils/Dusty' });
+    expect(beans).toMatchObject({ itemRating: 2, issueTag: 'Weevils / Dusty' });
   });
 
   it('1–3 stars without flagging an item is refused (prototype bug fix) and changes nothing', async () => {
@@ -167,7 +167,7 @@ describe('rating an order', () => {
     const other = await collectedOrder([{ productId: 'sku-garri', qty: 1 }]);
     const riceId = itemOf(order, 'sku-rice').id;
     expect((await rate(order, { stars: 2, flaggedItems: [{ itemId: riceId, issueTag: 'Bad vibes' }] })).status).toBe(400);
-    const foreign = await rate(order, { stars: 2, flaggedItems: [{ itemId: itemOf(other, 'sku-garri').id, issueTag: 'Short Measure' }] });
+    const foreign = await rate(order, { stars: 2, flaggedItems: [{ itemId: itemOf(other, 'sku-garri').id, issueTag: 'Short measure' }] });
     expect(foreign.body.error.code).toBe('INVALID_ITEM');
     for (const stars of [0, 6, 4.5, '5']) expect((await rate(order, { stars })).status).toBe(400);
   });
@@ -205,7 +205,7 @@ describe('rating an order', () => {
   it('a stall that drops below 3.5★ stops receiving orders', async () => {
     await prisma.vendor.update({ where: { id: 'v-emeka' }, data: { ratingScore: 3.6, ratingCount: 1 } });
     const order = await collectedOrder([{ productId: 'sku-oil', qty: 1 }]);
-    await rate(order, { stars: 1, flaggedItems: [{ itemId: itemOf(order, 'sku-oil').id, issueTag: 'Damaged Pack' }] });
+    await rate(order, { stars: 1, flaggedItems: [{ itemId: itemOf(order, 'sku-oil').id, issueTag: 'Damaged pack' }] });
     expect(Number((await vendorRow('v-emeka')).ratingScore)).toBe(2.3);
     const res = await request(app).post('/api/orders').set(as('ada')).send({ ...BASE, items: [{ productId: 'sku-oil', qty: 1 }] });
     expect(res.status).toBe(409); // Emeka was the only oil stall
@@ -213,10 +213,10 @@ describe('rating an order', () => {
 
   it('the vendor sees flagged items, but not who flagged them', async () => {
     const order = await collectedOrder([{ productId: 'sku-rice', qty: 1 }]);
-    await rate(order, { stars: 2, flaggedItems: [{ itemId: itemOf(order, 'sku-rice').id, issueTag: 'Short Measure' }] });
+    await rate(order, { stars: 2, flaggedItems: [{ itemId: itemOf(order, 'sku-rice').id, issueTag: 'Short measure' }] });
     const res = await request(app).get('/api/vendor/feedback').set(as('emeka'));
     expect(res.status).toBe(200);
-    expect(res.body.feedback[0]).toMatchObject({ itemRating: 2, issueTag: 'Short Measure', orderLabel: `#${order.orderNumber}` });
+    expect(res.body.feedback[0]).toMatchObject({ itemRating: 2, issueTag: 'Short measure', orderLabel: `#${order.orderNumber}` });
     const text = JSON.stringify(res.body);
     for (const leak of ['Test ada', TEST_DOMAIN, 'studentId']) expect(text).not.toContain(leak);
   });
@@ -294,13 +294,11 @@ describe('admin: staff accounts', () => {
 });
 
 describe('admin: vendors', () => {
-  it('changing bank details forgets the old Paystack recipient', async () => {
-    await prisma.vendor.update({ where: { id: 'v-emeka' }, data: { paystackRecipientCode: 'RCP_old' } });
+  it('updates bank details (future payouts go to the new account)', async () => {
     const res = await request(app).patch('/api/admin/vendors/v-emeka').set(as('admin'))
       .send({ bankName: 'Opay', bankCode: '999992', bankAccountNumber: '8012345678' });
     expect(res.status).toBe(200);
-    expect(res.body.vendor).toMatchObject({ bankName: 'Opay', bankAccountNumber: '8012345678' });
-    expect((await vendorRow('v-emeka')).paystackRecipientCode).toBeNull();
+    expect(res.body.vendor).toMatchObject({ bankName: 'Opay', bankCode: '999992', bankAccountNumber: '8012345678' });
   });
 
   it('switching a vendor off removes them from routing; validation and 404s', async () => {
@@ -332,11 +330,12 @@ describe('admin: summary and orders', () => {
     const { orders, money } = res.body;
     expect(orders.byStatus).toEqual({ ORDER_PLACED: 1, CANCELLED: 1 });
     expect(money.salesKobo).toBe(kept.totalKobo);
-    expect(money.deliveryFeesKobo).toBe(350 * N);
+    expect(money.deliveryFeesKobo).toBe(600 * N); // ₦10,400 basket → large-basket fee
     expect(money.itemMarginKobo).toBe(2 * (5200 - 4700) * N);
     expect(money.refundsKobo).toBe(cancelled.totalKobo - 200 * N);
     expect(money.cancellationFeesKobo).toBe(200 * N);
-    expect(money.grossProfitKobo).toBe(2 * 500 * N + 350 * N + 200 * N);
+    expect(money.paymentFeesKobo).toBe(50 * N); // Monnify ₦50 per paid order
+    expect(money.grossProfitKobo).toBe(2 * 500 * N + 600 * N + 200 * N - 50 * N);
     expect(res.body.vendors.find((v) => v.id === 'v-chidi').receivesOrders).toBe(false); // 3.4★
   });
 

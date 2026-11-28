@@ -108,6 +108,7 @@ describe('production configuration guard rails', () => {
     REDIS_URL: 'rediss://default:x@eu1-example.upstash.io:6379',
     JWT_SECRET: 'z'.repeat(96),
     CLIENT_URL: 'https://lodge-mart.vercel.app',
+    CLOUDINARY_URL: 'cloudinary://k:s@lodgemart',
   };
   it('accepts a sensible production config', () => {
     expect(() => parseEnv(prod)).not.toThrow();
@@ -117,6 +118,7 @@ describe('production configuration guard rails', () => {
     ['unencrypted remote database', { DATABASE_SSL: 'off' }, /DATABASE_SSL/],
     ['short JWT secret', { JWT_SECRET: 'z'.repeat(40) }, /JWT_SECRET/],
     ['verify without a CA certificate', { DATABASE_SSL: 'verify' }, /DATABASE_CA_CERT/],
+    ['no Cloudinary (unverifiable stall photos)', { CLOUDINARY_URL: '' }, /CLOUDINARY_URL/],
   ])('refuses %s', (_l, override, msg) => {
     expect(() => parseEnv({ ...prod, ...override })).toThrow(msg);
   });

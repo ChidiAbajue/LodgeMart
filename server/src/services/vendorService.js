@@ -17,7 +17,7 @@ export async function getDashboard(user) {
       where: { id: vendorId },
       select: {
         id: true, name: true, market: true, stallNumber: true, bankName: true, bankCode: true, bankAccountNumber: true,
-        ratingScore: true, ratingCount: true, payoutBalanceKobo: true, isActive: true,
+        ratingScore: true, ratingCount: true, payoutBalanceKobo: true, isActive: true, priorityTier: true,
         inventory: {
           orderBy: { product: { name: 'asc' } },
           select: {

@@ -14,6 +14,7 @@ import { vendorRoutes } from './routes/vendorRoutes.js';
 import { riderRoutes } from './routes/riderRoutes.js';
 import { paymentRoutes } from './routes/paymentRoutes.js';
 import { adminRoutes } from './routes/adminRoutes.js';
+import { walletRoutes } from './routes/walletRoutes.js';
 
 export function createApp() {
   const app = express();
@@ -25,14 +26,14 @@ export function createApp() {
   app.use(
     cors({
       origin(origin, cb) {
-        // No Origin header = server-to-server or curl (e.g. Paystack webhooks): allow.
+        // No Origin header = server-to-server or curl (e.g. Monnify webhooks): allow.
         if (!origin || env.CLIENT_URL.includes(origin)) return cb(null, true);
         return cb(new Error('CORS_NOT_ALLOWED'));
       },
       credentials: true,
     }),
   );
-  // Keep the exact raw bytes too: Paystack webhook signatures are computed over them.
+  // Keep the exact raw bytes too: Monnify webhook signatures are computed over them.
   app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
   app.use(pinoHttp({ logger }));
 
@@ -48,6 +49,7 @@ export function createApp() {
   app.use('/api/rider', riderRoutes);
   app.use('/api/payments', paymentRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/wallet', walletRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

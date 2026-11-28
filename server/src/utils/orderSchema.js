@@ -22,7 +22,7 @@ export const createOrderSchema = z.strictObject({
   zoneId: id,
   hubId: id,
   batchSlotId: id,
-  paymentMethod: z.enum(['WALLET', 'PAYSTACK'], { error: 'paymentMethod must be WALLET or PAYSTACK' }),
+  paymentMethod: z.enum(['WALLET', 'BANK_TRANSFER'], { error: 'paymentMethod must be WALLET or BANK_TRANSFER' }),
 });
 
 export const delegateSchema = z.strictObject({
@@ -44,3 +44,12 @@ export const ratingSchema = z.strictObject({
     .default([])
     .refine((f) => new Set(f.map((x) => x.itemId)).size === f.length, 'Each item can only be flagged once'),
 });
+
+// Monnify needs the student's BVN or NIN (11 digits) to create a virtual
+// account. Passed straight through to Monnify; never stored or logged.
+export const virtualAccountSchema = z
+  .strictObject({
+    bvn: z.string().trim().regex(/^\d{11}$/, 'BVN is 11 digits').optional(),
+    nin: z.string().trim().regex(/^\d{11}$/, 'NIN is 11 digits').optional(),
+  })
+  .refine((d) => Boolean(d.bvn) !== Boolean(d.nin), 'Provide your BVN or your NIN (one of them)');

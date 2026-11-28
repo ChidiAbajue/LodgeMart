@@ -1,10 +1,13 @@
 import { timingSafeEqual } from 'node:crypto';
 import { prisma } from '../config/prisma.js';
 import { redis } from '../config/redis.js';
-import { RIDER_COMMISSION_KOBO } from '../config/business.js';
+import { HUB_DWELL_MINUTES, RIDER_COMMISSION_KOBO } from '../config/business.js';
 import { AppError, notFound, serviceUnavailable } from '../utils/errors.js';
+import { logger } from '../utils/logger.js';
 import { fromDateString, isPastCutoff, toDateString } from '../utils/batchDate.js';
 import { assertPickupPhotoUrl } from './photoService.js';
+import { payPickup } from './payoutService.js';
+import { monnifyEnabled } from './monnifyClient.js';
 
 const AT_MARKET = ['ORDER_PLACED', 'PACKED_AT_MARKET'];
 const PIN_MAX_FAILURES = 5;
@@ -17,6 +20,7 @@ async function loadSlot(batchSlotId) {
 }
 
 const recipientOf = (order) => (order.delegateName ? `${order.delegateName} (Delegate)` : order.student.name);
+const dwellEndsAt = (arrivedAt) => (arrivedAt ? new Date(arrivedAt.getTime() + HUB_DWELL_MINUTES * 60_000) : null);
 
 // Everything a rider needs for one batch: which stalls to visit and what to
 // collect, then which hubs to drop at and who to hand each order to.
@@ -61,6 +65,7 @@ export async function getManifest({ batchDate, batchSlotId }) {
     if (!hubs.has(o.hub.id)) hubs.set(o.hub.id, { hub: o.hub, orders: [] });
     hubs.get(o.hub.id).orders.push({
       id: o.id, orderLabel, status: o.status, recipientName: recipientOf(o),
+      studentName: o.student.name, delegateName: o.delegateName,
       requiresBagMerge: o.requiresBagMerge, itemCount: o.items.length,
     });
   }
@@ -70,7 +75,11 @@ export async function getManifest({ batchDate, batchSlotId }) {
   return {
     batch: { batchDate, batchSlotId, label: slot.label, cutoffTime: slot.cutoffTime, pickupOpen: isPastCutoff(slot, date) },
     stalls: [...stalls.values()].map((s) => ({ ...s, pickup: pickupByVendor.get(s.vendor.id) ?? null })),
-    hubs: [...hubs.values()].map((h) => ({ ...h, arrivedAt: arrivalByHub.get(h.hub.id)?.arrivedAt ?? null })),
+    hubs: [...hubs.values()].map((h) => {
+      const arrivedAt = arrivalByHub.get(h.hub.id)?.arrivedAt ?? null;
+      return { ...h, arrivedAt, dwellEndsAt: dwellEndsAt(arrivedAt) };
+    }),
+    hubDwellMinutes: HUB_DWELL_MINUTES,
   };
 }
 
@@ -87,8 +96,9 @@ export async function confirmStallPickup(rider, { vendorId, batchDate, batchSlot
   const vendor = await prisma.vendor.findUnique({ where: { id: vendorId }, select: { id: true } });
   if (!vendor) throw notFound('Vendor not found');
 
+  let result;
   try {
-    return await prisma.$transaction(async (tx) => {
+    result = await prisma.$transaction(async (tx) => {
       const pickup = await tx.stallPickup.create({
         data: { vendorId, riderId: rider.id, batchSlotId, batchDate: date, photoUrl, payoutKobo: 0 },
       });
@@ -137,6 +147,48 @@ export async function confirmStallPickup(rider, { vendorId, batchDate, batchSlot
     }
     throw err;
   }
+
+  // Release 100% of the vendor's payout right away (zero holdback). The pickup
+  // is already saved; a payout problem never undoes it — it stays PENDING /
+  // FAILED / PROCESSING and the admin "run payouts" retries or re-checks it.
+  if (monnifyEnabled()) {
+    try {
+      const payout = await payPickup(result.stallPickupId);
+      result.payoutStatus = payout.status;
+    } catch (err) {
+      logger.error({ stallPickupId: result.stallPickupId, err: err.message }, 'Instant payout failed to start');
+    }
+  }
+  return result;
+}
+
+// Bag not collected within the hub dwell window: leave it at the partnered
+// junction kiosk. Only for READY_AT_HUB orders, and only once the rider has
+// been at that hub for HUB_DWELL_MINUTES.
+export async function leaveAtKiosk(rider, { orderId }) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, orderNumber: true, status: true, hubId: true, batchSlotId: true, batchDate: true },
+  });
+  if (!order) throw notFound('Order not found');
+  if (order.status !== 'READY_AT_HUB') throw new AppError(409, 'NOT_AT_HUB', 'Only bags waiting at the hub can go to the kiosk');
+
+  const arrival = await prisma.hubArrival.findUnique({
+    where: { hubId_batchSlotId_batchDate: { hubId: order.hubId, batchSlotId: order.batchSlotId, batchDate: order.batchDate } },
+    select: { arrivedAt: true },
+  });
+  const endsAt = dwellEndsAt(arrival?.arrivedAt);
+  if (!endsAt || endsAt > new Date()) {
+    const mins = endsAt ? Math.ceil((endsAt - Date.now()) / 60_000) : HUB_DWELL_MINUTES;
+    throw new AppError(409, 'DWELL_NOT_OVER', `Wait at the hub ${mins} more minute(s) before using the kiosk`, { dwellEndsAt: endsAt });
+  }
+
+  const { count } = await prisma.order.updateMany({
+    where: { id: orderId, status: 'READY_AT_HUB' },
+    data: { status: 'LEFT_AT_KIOSK', deliveredTo: 'Partnered Junction Kiosk', leftAtKioskAt: new Date() },
+  });
+  if (count === 0) throw new AppError(409, 'NOT_AT_HUB', 'This bag has already been handed over');
+  return { orderId, orderLabel: `#${order.orderNumber}`, status: 'LEFT_AT_KIOSK', deliveredTo: 'Partnered Junction Kiosk' };
 }
 
 // Rider arrives at a hub: that batch's in-transit orders for the hub become

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../config/prisma.js';
-import { MIN_VENDOR_RATING } from '../config/business.js';
+import { MIN_VENDOR_RATING, MONNIFY_FEE_PER_ORDER_KOBO, PRIORITY_MIN_RATING } from '../config/business.js';
 import { AppError, notFound } from '../utils/errors.js';
 import { hashPassword } from '../utils/password.js';
 import { fromDateString, toDateString } from '../utils/batchDate.js';
@@ -27,7 +27,7 @@ export async function getSummary({ from, to }) {
     prisma.user.aggregate({ where: { role: 'STUDENT' }, _sum: { walletBalanceKobo: true } }),
     prisma.vendor.findMany({
       orderBy: { ratingScore: 'asc' },
-      select: { id: true, name: true, stallNumber: true, ratingScore: true, ratingCount: true, isActive: true, payoutBalanceKobo: true },
+      select: { id: true, name: true, stallNumber: true, ratingScore: true, ratingCount: true, isActive: true, priorityTier: true, payoutBalanceKobo: true },
     }),
     prisma.orderItem.groupBy({ by: ['vendorId'], where: { issueTag: { not: null }, order: batch }, _count: { _all: true } }),
   ]);
@@ -35,6 +35,8 @@ export async function getSummary({ from, to }) {
   const itemMarginKobo = liveItems.reduce((s, i) => s + (i.studentPriceKobo - i.wholesaleCostKobo) * i.qty, 0);
   const cancellationFeesKobo = sum(cancelledPaid, 'totalKobo') - sum(refunds, 'refundKobo');
   const riderCostKobo = sum(riderPay, 'amountKobo');
+  // Monnify's flat ₦50 bank-transfer fee per paid order (Chidi's unit economics).
+  const paymentFeesKobo = revenue._count._all * MONNIFY_FEE_PER_ORDER_KOBO;
   const flagsByVendor = new Map(flags.map((f) => [f.vendorId, f._count._all]));
 
   return {
@@ -50,8 +52,9 @@ export async function getSummary({ from, to }) {
       cancellationFeesKobo,
       refundsKobo: sum(refunds, 'refundKobo'),
       riderEarningsKobo: riderCostKobo,
-      // What LodgeMart keeps: item margin + delivery fees + cancellation fees − rider commission
-      grossProfitKobo: itemMarginKobo + sum(revenue, 'deliveryFeeKobo') + cancellationFeesKobo - riderCostKobo,
+      paymentFeesKobo,
+      // What LodgeMart keeps: item margin + delivery fees + cancellation fees − rider commission − Monnify fees
+      grossProfitKobo: itemMarginKobo + sum(revenue, 'deliveryFeeKobo') + cancellationFeesKobo - riderCostKobo - paymentFeesKobo,
       studentWalletBalancesKobo: sum(wallets, 'walletBalanceKobo'), // money we hold for students
     },
     payouts: Object.fromEntries(payouts.map((p) => [p.payoutStatus, { count: p._count._all, amountKobo: p._sum.payoutKobo ?? 0 }])),
@@ -149,25 +152,27 @@ export async function listVendors() {
     orderBy: { name: 'asc' },
     select: {
       id: true, name: true, market: true, stallNumber: true, bankName: true, bankCode: true, bankAccountNumber: true,
-      ratingScore: true, ratingCount: true, payoutBalanceKobo: true, isActive: true,
+      ratingScore: true, ratingCount: true, payoutBalanceKobo: true, isActive: true, priorityTier: true,
       user: { select: { id: true, email: true, name: true } },
     },
   });
   return vendors.map((v) => ({ ...v, ratingScore: Number(v.ratingScore) }));
 }
 
-// Update a stall. Changing bank details forgets the saved Paystack recipient,
-// so the next payout goes to the NEW account.
+// Update a stall. Payouts always go to the bank details on file at the time.
+// Priority Supplier Tier can only be switched on for vendors rated >= 4.5★.
 export async function updateVendor(vendorId, data) {
-  const vendor = await prisma.vendor.findUnique({ where: { id: vendorId }, select: { id: true } });
+  const vendor = await prisma.vendor.findUnique({ where: { id: vendorId }, select: { id: true, ratingScore: true } });
   if (!vendor) throw notFound('Vendor not found');
-  const bankChanged = ['bankName', 'bankCode', 'bankAccountNumber'].some((k) => k in data);
+  if (data.priorityTier === true && Number(vendor.ratingScore) < PRIORITY_MIN_RATING) {
+    throw new AppError(409, 'NOT_ELIGIBLE', `Priority Supplier Tier needs a rating of ${PRIORITY_MIN_RATING}★ or more`);
+  }
   const updated = await prisma.vendor.update({
     where: { id: vendorId },
-    data: { ...data, ...(bankChanged && { paystackRecipientCode: null }) },
+    data,
     select: {
       id: true, name: true, market: true, stallNumber: true, bankName: true, bankCode: true, bankAccountNumber: true,
-      ratingScore: true, ratingCount: true, isActive: true,
+      ratingScore: true, ratingCount: true, isActive: true, priorityTier: true,
     },
   });
   return { ...updated, ratingScore: Number(updated.ratingScore) };

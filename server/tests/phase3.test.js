@@ -46,7 +46,7 @@ beforeAll(async () => {
   await connectRedis();
   await clearRateLimits();
   inventorySnapshot = await prisma.vendorInventory.findMany();
-  vendorSnapshot = await prisma.vendor.findMany({ select: { id: true, ratingScore: true, isActive: true } });
+  vendorSnapshot = await prisma.vendor.findMany({ select: { id: true, ratingScore: true, isActive: true, priorityTier: true } });
   for (const key of ['ada', 'bayo', 'rich']) await makeStudent(key);
 });
 
@@ -55,7 +55,7 @@ beforeEach(async () => {
   await clearRateLimits();
   for (const row of inventorySnapshot) await setStock(row.vendorId, row.productId, row.stockQty);
   for (const v of vendorSnapshot) {
-    await prisma.vendor.update({ where: { id: v.id }, data: { ratingScore: v.ratingScore, isActive: v.isActive } });
+    await prisma.vendor.update({ where: { id: v.id }, data: { ratingScore: v.ratingScore, isActive: v.isActive, priorityTier: v.priorityTier } });
   }
   await setWallet('ada', 50_000 * N);
   await setWallet('bayo', 50_000 * N);
@@ -68,7 +68,7 @@ afterAll(async () => {
   await prisma.user.deleteMany({ where: { email: { endsWith: TEST_DOMAIN } } });
   for (const row of inventorySnapshot) await setStock(row.vendorId, row.productId, row.stockQty);
   for (const v of vendorSnapshot) {
-    await prisma.vendor.update({ where: { id: v.id }, data: { ratingScore: v.ratingScore, isActive: v.isActive } });
+    await prisma.vendor.update({ where: { id: v.id }, data: { ratingScore: v.ratingScore, isActive: v.isActive, priorityTier: v.priorityTier } });
   }
   // Put the order-number sequence back so seeded numbering (#4083 next) is unchanged.
   await prisma.$executeRaw`SELECT setval(pg_get_serial_sequence('"Order"', 'orderNumber'), (SELECT MAX("orderNumber") FROM "Order"), true)`;
@@ -145,7 +145,9 @@ describe('catalog', () => {
       .toEqual(['dynamo-junction', 'school-gate']);
     expect(res.body.batchSlots.map((s) => s.id)).toEqual(['early', 'midday', 'evening']);
     expect(res.body.batchSlots[0].nextBatchDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(res.body.fees).toEqual({ deliveryFeeKobo: 35000, cancellationFeeKobo: 20000 });
+    expect(res.body.fees.cancellationFeeKobo).toBe(20000);
+    expect(res.body.fees.deliveryFee).toMatchObject({ standardKobo: 35000, largeKobo: 60000, bulkItemSurchargeKobo: 25000 });
+    expect(res.body.products.find((p) => p.id === 'sku-indomie').isBulkItem).toBe(true);
     const text = JSON.stringify(res.body);
     for (const secret of ['wholesale', 'stockQty', 'bankAccount', '0123456789']) expect(text).not.toContain(secret);
   });
@@ -170,8 +172,8 @@ describe('placing an order', () => {
     const o = res.body.order;
     expect(o.status).toBe('ORDER_PLACED');
     expect(o.subtotalKobo).toBe((5200 + 2800 + 2650) * N);
-    expect(o.deliveryFeeKobo).toBe(350 * N);
-    expect(o.totalKobo).toBe(11000 * N);
+    expect(o.deliveryFeeKobo).toBe(600 * N); // ₦10,650 basket → large-basket fee
+    expect(o.totalKobo).toBe(11250 * N);
     expect(o.requiresBagMerge).toBe(false);
     expect(new Set(o.items.map((i) => i.vendor.id))).toEqual(new Set(['v-emeka']));
     expect(o.pickupPin).toMatch(/^\d{4}$/);
@@ -179,7 +181,7 @@ describe('placing an order', () => {
     expect(o.batchDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(JSON.stringify(o)).not.toContain('wholesale');
 
-    expect(await wallet('ada')).toBe((50_000 - 11_000) * N);
+    expect(await wallet('ada')).toBe((50_000 - 11_250) * N);
     expect(await stock('v-emeka', 'sku-rice')).toBe(44);
     expect(await stock('v-emeka', 'sku-oil')).toBe(39);
   });
@@ -190,7 +192,7 @@ describe('placing an order', () => {
     expect(res.body.order.requiresBagMerge).toBe(true);
     const byProduct = Object.fromEntries(res.body.order.items.map((i) => [i.productId, i.vendor.id]));
     expect(byProduct).toEqual({ 'sku-rice': 'v-emeka', 'sku-beans': 'v-ngozi' });
-    expect(res.body.order.totalKobo).toBe((5200 + 2 * 6100 + 350) * N);
+    expect(res.body.order.totalKobo).toBe((5200 + 2 * 6100 + 600) * N);
   });
 
   it('never routes to vendors rated below 3.5', async () => {
@@ -200,8 +202,9 @@ describe('placing an order', () => {
     expect(await stock('v-chidi', 'sku-rice')).toBe(20);
   });
 
-  it('routes to a vendor once their rating qualifies (highest rating wins)', async () => {
+  it('routes to a vendor once their rating qualifies (highest rating wins among non-priority)', async () => {
     await prisma.vendor.update({ where: { id: 'v-chidi' }, data: { ratingScore: 4.9 } });
+    await prisma.vendor.update({ where: { id: 'v-emeka' }, data: { priorityTier: false } });
     const res = await placeOrder('ada', [{ productId: 'sku-rice', qty: 1 }, { productId: 'sku-garri', qty: 1 }]);
     expect(res.status).toBe(201);
     expect(new Set(res.body.order.items.map((i) => i.vendor.id))).toEqual(new Set(['v-chidi']));

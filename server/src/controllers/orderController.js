@@ -3,13 +3,13 @@ import { rateOrder } from '../services/ratingService.js';
 
 // POST /api/orders — student places an order.
 //   WALLET   → { order }                       (paid, status ORDER_PLACED)
-//   PAYSTACK → { order, payment: { authorizationUrl, reference } }  (status PENDING_PAYMENT;
-//              send the student to authorizationUrl)
+//   BANK_TRANSFER → { order, payment: { accountNumber, accountName, bankName, amountKobo, expiresAt } }
+//                   (status PENDING_PAYMENT; show the one-time Monnify account)
 export async function createOrder(req, res) {
   res.status(201).json(await orderService.createOrder(req.user, req.body));
 }
 
-// POST /api/orders/:id/verify-payment — owner; asks Paystack now (if the webhook is slow).
+// POST /api/orders/:id/verify-payment — owner; "I have sent the transfer": asks Monnify now.
 export async function verifyPayment(req, res) {
   res.json({ order: await orderService.verifyMyPayment(req.user, req.params.id) });
 }

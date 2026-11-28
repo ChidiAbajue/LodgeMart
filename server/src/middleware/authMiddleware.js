@@ -9,7 +9,7 @@ const PUBLIC_ROUTES = new Set([
   'POST /api/auth/register',
   'POST /api/auth/login',
   'GET /api/catalog',
-  'POST /api/payments/paystack/webhook', // authenticated by HMAC signature instead
+  'POST /api/payments/monnify/webhook', // authenticated by HMAC signature instead
 ]);
 
 function routeKey(req) {

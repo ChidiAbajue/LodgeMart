@@ -3,37 +3,24 @@ import { prisma } from '../config/prisma.js';
 import { logger } from '../utils/logger.js';
 import { AppError } from '../utils/errors.js';
 import { toDateString } from '../utils/batchDate.js';
-import * as paystack from './paystackClient.js';
+import * as monnify from './monnifyClient.js';
 
-// Vendor payouts. Each StallPickup (one per vendor per batch, created in
-// Phase 4 as PENDING) becomes one Paystack transfer.
+// Vendor payouts — 100%, zero holdback, sent via Monnify as soon as the rider
+// confirms the stall pickup (one StallPickup per vendor per batch).
 //
-//   PENDING / FAILED --claim--> PROCESSING --transfer.success--> PAID (+ vendor.payoutBalanceKobo)
-//                                         --transfer.failed----> FAILED (admin can retry)
+//   PENDING / FAILED --claim--> PROCESSING --SUCCESS---------------------> PAID (+ vendor.payoutBalanceKobo)
+//                                         --definite failure-------------> FAILED (admin may retry)
+//                                         --unclear (timeout, PENDING,
+//                                           awaiting OTP, requery)-------> stays PROCESSING, re-checked
+//                                                                           by status query / webhook
 //
-// Double-payment guards: the claim is a conditional update (two admins
-// clicking "run" at once can't both claim a pickup), every attempt has its own
-// reference, and Paystack refuses a reference it has already seen.
+// Double-payment guards: the claim is a conditional update (two triggers can't
+// both claim a pickup); a NEW reference is used only after a DEFINITE failure;
+// an unclear outcome is re-queried, never re-sent.
 
 const newTransferRef = () => `lm-payout-${randomUUID()}`;
-
-// Re-read the vendor each time: an earlier payout in the same run may have
-// just saved the recipient code (don't register the same bank account twice).
-async function ensureRecipient(vendorId) {
-  const vendor = await prisma.vendor.findUnique({
-    where: { id: vendorId },
-    select: { id: true, name: true, bankCode: true, bankAccountNumber: true, paystackRecipientCode: true },
-  });
-  if (vendor.paystackRecipientCode) return vendor.paystackRecipientCode;
-  if (!vendor.bankCode) throw new Error('Vendor has no bank code on file');
-  const r = await paystack.createTransferRecipient({
-    name: vendor.name,
-    accountNumber: vendor.bankAccountNumber,
-    bankCode: vendor.bankCode,
-  });
-  await prisma.vendor.update({ where: { id: vendor.id }, data: { paystackRecipientCode: r.recipient_code } });
-  return r.recipient_code;
-}
+const SUCCESS = ['SUCCESS', 'COMPLETED'];
+const DEFINITELY_FAILED = ['FAILED', 'REVERSED', 'EXPIRED'];
 
 async function markPaid(stallPickupId, transferRef) {
   return prisma.$transaction(async (tx) => {
@@ -55,80 +42,140 @@ const markFailed = (stallPickupId, transferRef, reason) =>
     data: { payoutStatus: 'FAILED', payoutFailureReason: String(reason).slice(0, 300) },
   });
 
-// Admin: send every pending (or previously failed) payout.
-export async function runPayouts() {
-  // Without a key, refuse up front instead of marking every payout FAILED.
-  if (!paystack.paystackEnabled()) {
-    throw new AppError(503, 'PAYMENTS_NOT_CONFIGURED', 'Paystack is not configured, so payouts cannot be sent');
+const noteWaiting = (stallPickupId, transferRef, reason) =>
+  prisma.stallPickup.updateMany({
+    where: { id: stallPickupId, transferRef, payoutStatus: 'PROCESSING' },
+    data: { payoutFailureReason: reason },
+  });
+
+// Act on a Monnify transfer status (from initiate, status query or webhook).
+async function settle(pickupId, transferRef, status, reason) {
+  if (SUCCESS.includes(status)) {
+    await markPaid(pickupId, transferRef);
+    return 'PAID';
   }
+  if (DEFINITELY_FAILED.includes(status)) {
+    await markFailed(pickupId, transferRef, reason || `Transfer ${status.toLowerCase()}`);
+    return 'FAILED';
+  }
+  if (status === 'PENDING_AUTHORIZATION' || status === 'OTP_EMAIL_DISPATCH_FAILED') {
+    await noteWaiting(pickupId, transferRef, 'Waiting for OTP approval in the Monnify dashboard (or disable transfer 2FA)');
+  }
+  return 'PROCESSING';
+}
+
+// Send one pickup's payout. Safe to call more than once: only a PENDING or
+// FAILED pickup can be claimed.
+export async function payPickup(stallPickupId) {
+  const p = await prisma.stallPickup.findUnique({
+    where: { id: stallPickupId },
+    select: {
+      id: true, payoutKobo: true, payoutStatus: true, batchDate: true, batchSlotId: true,
+      vendor: { select: { id: true, name: true, bankCode: true, bankAccountNumber: true } },
+    },
+  });
+  if (!p || !['PENDING', 'FAILED'].includes(p.payoutStatus) || p.payoutKobo <= 0) {
+    return { stallPickupId, status: p?.payoutStatus ?? 'NOT_FOUND' };
+  }
+  const base = { stallPickupId: p.id, vendorId: p.vendor.id, amountKobo: p.payoutKobo };
+
+  if (!p.vendor.bankCode || !p.vendor.bankAccountNumber) {
+    await prisma.stallPickup.update({ where: { id: p.id }, data: { payoutFailureReason: 'Vendor has no bank details on file' } });
+    return { ...base, status: p.payoutStatus, reason: 'Vendor has no bank details on file' };
+  }
+
+  const transferRef = newTransferRef();
+  const claimed = await prisma.stallPickup.updateMany({
+    where: { id: p.id, payoutStatus: p.payoutStatus },
+    data: { payoutStatus: 'PROCESSING', transferRef, payoutAttempts: { increment: 1 }, payoutFailureReason: null },
+  });
+  if (claimed.count === 0) return { ...base, status: 'PROCESSING' }; // someone else got it
+
+  try {
+    const t = await monnify.singleTransfer({
+      amountKobo: p.payoutKobo,
+      reference: transferRef,
+      narration: `LodgeMart payout ${p.batchSlotId} ${toDateString(p.batchDate)}`,
+      bankCode: p.vendor.bankCode,
+      accountNumber: p.vendor.bankAccountNumber,
+    });
+    const status = await settle(p.id, transferRef, t.status, t.comment);
+    return { ...base, status, ...(status !== 'PAID' && t.status !== 'SUCCESS' && { providerStatus: t.status }) };
+  } catch (err) {
+    if (err instanceof monnify.MonnifyError && !err.definite) {
+      // We don't know whether Monnify sent it. Leave it PROCESSING and re-check later.
+      await noteWaiting(p.id, transferRef, 'Outcome unknown, will re-check with Monnify');
+      logger.warn({ stallPickupId: p.id, err: err.message }, 'Payout outcome unknown');
+      return { ...base, status: 'PROCESSING', reason: 'OUTCOME_UNKNOWN' };
+    }
+    logger.warn({ stallPickupId: p.id, err: err.message }, 'Payout failed');
+    await markFailed(p.id, transferRef, err.message);
+    return { ...base, status: 'FAILED', reason: err.message };
+  }
+}
+
+// Re-check transfers still PROCESSING (unclear outcome, awaiting OTP, missed webhook).
+async function reconcileProcessing() {
+  const rows = await prisma.stallPickup.findMany({
+    where: { payoutStatus: 'PROCESSING', transferRef: { not: null } },
+    select: { id: true, transferRef: true, vendorId: true, payoutKobo: true },
+    take: 100,
+  });
+  const results = [];
+  for (const r of rows) {
+    try {
+      const t = await monnify.getTransferStatus(r.transferRef);
+      const status = await settle(r.id, r.transferRef, t.status, t.transactionDescription);
+      results.push({ stallPickupId: r.id, vendorId: r.vendorId, amountKobo: r.payoutKobo, status, recheck: true });
+    } catch (err) {
+      results.push({ stallPickupId: r.id, vendorId: r.vendorId, amountKobo: r.payoutKobo, status: 'PROCESSING', recheck: true, reason: err.message });
+    }
+  }
+  return results;
+}
+
+// Admin: re-check in-flight transfers, then send everything still pending or failed.
+export async function runPayouts() {
+  if (!monnify.monnifyEnabled()) {
+    throw new AppError(503, 'PAYMENTS_NOT_CONFIGURED', 'Monnify is not configured, so payouts cannot be sent');
+  }
+  const rechecked = await reconcileProcessing();
   const due = await prisma.stallPickup.findMany({
     where: { payoutStatus: { in: ['PENDING', 'FAILED'] }, payoutKobo: { gt: 0 } },
     orderBy: { capturedAt: 'asc' },
     take: 100,
-    select: { id: true, payoutKobo: true, payoutStatus: true, batchDate: true, batchSlotId: true, vendor: true },
+    select: { id: true },
   });
-
-  const results = [];
-  for (const p of due) {
-    const transferRef = newTransferRef();
-    const claimed = await prisma.stallPickup.updateMany({
-      where: { id: p.id, payoutStatus: p.payoutStatus },
-      data: { payoutStatus: 'PROCESSING', transferRef, payoutAttempts: { increment: 1 }, payoutFailureReason: null },
-    });
-    if (claimed.count === 0) continue; // another run got it
-
-    const base = { stallPickupId: p.id, vendorId: p.vendor.id, amountKobo: p.payoutKobo };
-    try {
-      const recipientCode = await ensureRecipient(p.vendor.id);
-      const t = await paystack.initiateTransfer({
-        amountKobo: p.payoutKobo,
-        recipientCode,
-        reference: transferRef,
-        reason: `LodgeMart payout ${p.batchSlotId} ${toDateString(p.batchDate)}`,
-      });
-      if (t.status === 'success') {
-        await markPaid(p.id, transferRef);
-        results.push({ ...base, status: 'PAID' });
-      } else if (t.status === 'otp') {
-        await markFailed(p.id, transferRef, 'Paystack requires OTP: disable transfer OTP in the Paystack dashboard');
-        results.push({ ...base, status: 'FAILED', reason: 'OTP_REQUIRED' });
-      } else {
-        results.push({ ...base, status: 'PROCESSING' }); // final result arrives by webhook
-      }
-    } catch (err) {
-      logger.warn({ stallPickupId: p.id, err: err.message }, 'Payout failed');
-      await markFailed(p.id, transferRef, err.message);
-      results.push({ ...base, status: 'FAILED', reason: err.message });
-    }
-  }
+  const sent = [];
+  for (const { id } of due) sent.push(await payPickup(id));
+  const results = [...rechecked, ...sent];
   return { attempted: results.length, results };
 }
 
-// transfer.success / transfer.failed / transfer.reversed webhooks.
-export async function applyTransferEvent(event, data) {
+// SUCCESSFUL_DISBURSEMENT / FAILED_DISBURSEMENT / REVERSED_DISBURSEMENT webhooks
+// (re-checked with Monnify by the caller before arriving here).
+export async function applyTransferEvent(eventType, data) {
   const pickup = await prisma.stallPickup.findUnique({
     where: { transferRef: data?.reference ?? '' },
-    select: { id: true, payoutKobo: true, payoutStatus: true, vendorId: true },
+    select: { id: true, payoutKobo: true, vendorId: true },
   });
   if (!pickup) return 'UNKNOWN_REFERENCE';
 
-  if (event === 'transfer.success') {
-    if (data.amount !== pickup.payoutKobo) {
+  if (eventType === 'SUCCESSFUL_DISBURSEMENT') {
+    if (monnify.toKobo(data.amount) !== pickup.payoutKobo) {
       logger.error({ reference: data.reference, amount: data.amount }, 'Transfer amount mismatch');
       return 'AMOUNT_MISMATCH';
     }
     return (await markPaid(pickup.id, data.reference)) ? 'PAID' : 'ALREADY_PROCESSED';
   }
 
-  if (event === 'transfer.failed') {
-    const { count } = await markFailed(pickup.id, data.reference, data.reason || 'Transfer failed');
+  if (eventType === 'FAILED_DISBURSEMENT') {
+    const { count } = await markFailed(pickup.id, data.reference, data.transactionDescription || 'Transfer failed');
     return count ? 'FAILED' : 'ALREADY_PROCESSED';
   }
 
-  if (event === 'transfer.reversed') {
+  if (eventType === 'REVERSED_DISBURSEMENT') {
     // Money came back to us. If we had counted it as paid, un-count it once.
-    // Each status gets its own conditional update, so the balance is only
-    // decremented if THIS update is the one that moved it out of PAID.
     return prisma.$transaction(async (tx) => {
       const reversed = { payoutStatus: 'FAILED', payoutFailureReason: 'Transfer reversed by bank', paidAt: null };
       const wasPaid = await tx.stallPickup.updateMany({

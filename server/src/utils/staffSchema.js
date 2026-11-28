@@ -40,6 +40,8 @@ export const hubArrivalSchema = z.strictObject({
   batchSlotId: id,
 });
 
+export const kioskDropSchema = z.strictObject({ orderId: z.uuid('Invalid order id') });
+
 export const handoverSchema = z.strictObject({
   orderId: z.uuid('Invalid order id'),
   pin: z.string().trim().regex(/^\d{4}$/, 'PIN must be 4 digits'),

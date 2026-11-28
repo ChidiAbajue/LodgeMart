@@ -29,6 +29,11 @@ export async function handover(req, res) {
   res.json(await riderService.handover(req.user, req.body));
 }
 
+// POST /api/rider/kiosk-drop  { orderId } — after the 20-minute hub wait
+export async function leaveAtKiosk(req, res) {
+  res.json(await riderService.leaveAtKiosk(req.user, req.body));
+}
+
 // GET /api/rider/earnings
 export async function getEarnings(req, res) {
   res.json(await riderService.getEarnings(req.user));

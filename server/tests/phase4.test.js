@@ -15,7 +15,7 @@ const PHOTO = 'https://res.cloudinary.com/lodgemart-test/image/upload/v1/lodgema
 let dayCounter = 0;
 const freshDate = () => toDateString(new Date(Date.UTC(2025, 0, 1 + dayCounter++)));
 
-let inventorySnapshot;
+let inventorySnapshot, vendorBalances;
 const tokens = {};
 const ids = {};
 
@@ -62,6 +62,7 @@ beforeAll(async () => {
   if (!process.env.REDIS_URL.endsWith('/1')) throw new Error('Tests must use Redis DB 1');
   await connectRedis();
   inventorySnapshot = await prisma.vendorInventory.findMany();
+  vendorBalances = await prisma.vendor.findMany({ select: { id: true, payoutBalanceKobo: true } });
   const passwordHash = await hashPassword('longenough1');
   for (const key of ['ada', 'bayo']) {
     const u = await prisma.user.create({
@@ -102,6 +103,7 @@ afterAll(async () => {
       data: { stockQty: row.stockQty, wholesalePriceKobo: row.wholesalePriceKobo },
     });
   }
+  for (const v of vendorBalances) await prisma.vendor.update({ where: { id: v.id }, data: { payoutBalanceKobo: v.payoutBalanceKobo } });
   await prisma.$executeRaw`SELECT setval(pg_get_serial_sequence('"Order"', 'orderNumber'), (SELECT MAX("orderNumber") FROM "Order"), true)`;
   await clearKeys();
   await prisma.$disconnect();
@@ -217,15 +219,17 @@ describe('rider: manifest', () => {
 });
 
 describe('rider: stall pickup', () => {
-  it('collects only THIS batch (prototype bug fix) and records the payout as pending', async () => {
+  it('collects only THIS batch (prototype bug fix) and pays the vendor 100% immediately', async () => {
     const dateA = freshDate();
     const dateB = freshDate();
     const a = await orderFor(dateA, [{ productId: 'sku-rice', qty: 2 }]);
     const b = await orderFor(dateB, [{ productId: 'sku-garri', qty: 1 }]);
 
+    const balanceBefore = (await prisma.vendor.findUnique({ where: { id: 'v-emeka' } })).payoutBalanceKobo;
     const res = await pickup(dateA, 'v-emeka');
     expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ itemsCollected: 1, payoutKobo: 2 * 4700 * N, payoutStatus: 'PENDING', ordersInTransit: 1 });
+    // Zero holdback: the (fake) Monnify transfer succeeds before the rider leaves the stall.
+    expect(res.body).toMatchObject({ itemsCollected: 1, payoutKobo: 2 * 4700 * N, payoutStatus: 'PAID', ordersInTransit: 1 });
 
     expect((await orderRow(a.id)).status).toBe('RIDER_IN_TRANSIT');
     const untouched = await orderRow(b.id);
@@ -233,8 +237,8 @@ describe('rider: stall pickup', () => {
     expect(untouched.items[0].riderPickedUp).toBe(false);
 
     const dash = await request(app).get('/api/vendor/dashboard').set(as('emeka'));
-    expect(dash.body.vendor.pendingPayoutKobo).toBeGreaterThanOrEqual(2 * 4700 * N);
-    expect(dash.body.stallPickups[0]).toMatchObject({ batchDate: dateA, payoutStatus: 'PENDING' });
+    expect(dash.body.vendor.payoutBalanceKobo).toBe(balanceBefore + 2 * 4700 * N);
+    expect(dash.body.stallPickups[0]).toMatchObject({ batchDate: dateA, payoutStatus: 'PAID' });
   });
 
   it('pays the wholesale price at order time, even if the vendor changes it later', async () => {

@@ -1,13 +1,14 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { prisma } from '../config/prisma.js';
 import { env } from '../config/env.js';
-import { CANCELLATION_FEE_KOBO, DELIVERY_FEE_KOBO } from '../config/business.js';
+import { CANCELLATION_FEE_KOBO } from '../config/business.js';
 import { AppError, notFound } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
 import { batchDateFor, toDateString } from '../utils/batchDate.js';
 import { routeBasket } from './routingService.js';
 import { routableVendor } from './catalogService.js';
-import * as paystack from './paystackClient.js';
+import { quoteDelivery } from '../utils/deliveryFee.js';
+import * as monnify from './monnifyClient.js';
 
 const CANCELLABLE = ['PENDING_PAYMENT', 'ORDER_PLACED', 'PACKED_AT_MARKET']; // before the rider has picked up
 const DELEGATABLE = ['ORDER_PLACED', 'PACKED_AT_MARKET', 'RIDER_IN_TRANSIT', 'READY_AT_HUB'];
@@ -32,6 +33,7 @@ const orderSelect = {
   requiresBagMerge: true,
   subtotalKobo: true,
   deliveryFeeKobo: true,
+  bulkSurchargeKobo: true,
   totalKobo: true,
   paymentMethod: true,
   paymentRef: true,
@@ -39,6 +41,8 @@ const orderSelect = {
   deliveredTo: true,
   collectedAt: true,
   ratedAt: true,
+  replacementCredit: true,
+  leftAtKioskAt: true,
   cancelledAt: true,
   refundKobo: true,
   createdAt: true,
@@ -104,20 +108,22 @@ async function restock(tx, orderId) {
 }
 
 // Place an order. Routing + stock reservation happen in one transaction.
-//   WALLET   → paid immediately from the wallet → ORDER_PLACED.
-//   PAYSTACK → PENDING_PAYMENT (stock held); returns a Paystack checkout URL.
-//              The webhook (or verifyMyPayment) marks it paid.
+//   WALLET        → paid immediately from the wallet → ORDER_PLACED.
+//   BANK_TRANSFER → PENDING_PAYMENT (stock held); returns a one-time Monnify
+//                   account to transfer the exact amount to. The webhook (or
+//                   verifyMyPayment, "I have sent the transfer") marks it paid.
 export async function createOrder(student, input) {
   const { slot, products } = await loadOrderInputs(input);
   const lines = input.items;
-  const isCard = input.paymentMethod === 'PAYSTACK';
-  if (isCard && !paystack.paystackEnabled()) {
-    throw new AppError(503, 'PAYMENTS_NOT_CONFIGURED', 'Card payments are not available right now');
+  const isTransfer = input.paymentMethod === 'BANK_TRANSFER';
+  if (isTransfer && !monnify.monnifyEnabled()) {
+    throw new AppError(503, 'PAYMENTS_NOT_CONFIGURED', 'Bank transfer is not available right now, please pay from your wallet');
   }
 
-  // Prices come from the database, never from the client.
-  const subtotalKobo = lines.reduce((sum, l) => sum + products.get(l.productId).studentPriceKobo * l.qty, 0);
-  const totalKobo = subtotalKobo + DELIVERY_FEE_KOBO;
+  // Prices and the tiered delivery fee come from the database, never from the client.
+  const quote = quoteDelivery(lines.map((l) => ({ qty: l.qty, product: products.get(l.productId) })));
+  const { subtotalKobo, deliveryFeeKobo, bulkSurchargeKobo } = quote;
+  const totalKobo = subtotalKobo + deliveryFeeKobo;
 
   let order;
   for (let attempt = 1; attempt <= MAX_STOCK_RACE_RETRIES && !order; attempt++) {
@@ -129,13 +135,15 @@ export async function createOrder(student, input) {
             productId: true,
             stockQty: true,
             wholesalePriceKobo: true,
-            vendor: { select: { id: true, ratingScore: true } },
+            vendor: { select: { id: true, ratingScore: true, priorityTier: true } },
           },
         });
         const vendors = new Map();
         for (const row of inventory) {
           if (!vendors.has(row.vendor.id)) {
-            vendors.set(row.vendor.id, { id: row.vendor.id, rating: Number(row.vendor.ratingScore), inventory: new Map() });
+            vendors.set(row.vendor.id, {
+              id: row.vendor.id, rating: Number(row.vendor.ratingScore), priority: row.vendor.priorityTier, inventory: new Map(),
+            });
           }
           vendors.get(row.vendor.id).inventory.set(row.productId, row);
         }
@@ -156,7 +164,7 @@ export async function createOrder(student, input) {
           if (count === 0) throw new StockRace();
         }
 
-        if (!isCard) {
+        if (!isTransfer) {
           // Same pattern for the wallet: the balance can never go negative.
           const paid = await tx.user.updateMany({
             where: { id: student.id, walletBalanceKobo: { gte: totalKobo } },
@@ -174,15 +182,16 @@ export async function createOrder(student, input) {
             hubId: input.hubId,
             batchSlotId: slot.id,
             batchDate: batchDateFor(slot),
-            status: isCard ? 'PENDING_PAYMENT' : 'ORDER_PLACED',
+            status: isTransfer ? 'PENDING_PAYMENT' : 'ORDER_PLACED',
             pickupPin: newPickupPin(),
             requiresBagMerge: new Set(routed.assignments.map((a) => a.vendorId)).size >= 2,
             subtotalKobo,
-            deliveryFeeKobo: DELIVERY_FEE_KOBO,
+            deliveryFeeKobo,
+            bulkSurchargeKobo,
             totalKobo,
-            paymentMethod: isCard ? 'PAYSTACK' : 'WALLET',
-            paymentRef: isCard ? `lm-ps-${randomUUID()}` : `LM-WALLET-${randomUUID()}`,
-            paidAt: isCard ? null : new Date(),
+            paymentMethod: isTransfer ? 'BANK_TRANSFER' : 'WALLET',
+            paymentRef: isTransfer ? `lm-bt-${randomUUID()}` : `LM-WALLET-${randomUUID()}`,
+            paidAt: isTransfer ? null : new Date(),
             items: {
               create: routed.assignments.map((a) => ({
                 productId: a.productId,
@@ -201,31 +210,43 @@ export async function createOrder(student, input) {
     }
   }
   if (!order) throw new AppError(409, 'OUT_OF_STOCK', 'Stock just ran out for an item in your basket, please try again');
-  if (!isCard) return { order: toView(order, student) };
+  if (!isTransfer) return { order: toView(order, student) };
 
-  // Card: open a Paystack checkout. If Paystack can't be reached, release the
-  // held stock straight away rather than waiting for expiry.
+  // Bank transfer: open a Monnify checkout and get its one-time account. If
+  // Monnify can't be reached, release the held stock straight away.
   try {
-    const checkout = await paystack.initializeTransaction({
-      email: student.email,
+    const checkout = await monnify.initTransaction({
       amountKobo: totalKobo,
-      reference: order.paymentRef,
-      metadata: { orderId: order.id, orderNumber: order.orderNumber },
+      customerName: student.name,
+      customerEmail: student.email,
+      paymentReference: order.paymentRef,
+      description: `LodgeMart order #${order.orderNumber}`,
     });
+    await prisma.order.update({ where: { id: order.id }, data: { providerRef: checkout.transactionReference } });
+    const account = await monnify.initBankTransfer(checkout.transactionReference);
     return {
       order: toView(order, student),
-      payment: { provider: 'PAYSTACK', reference: order.paymentRef, authorizationUrl: checkout.authorization_url },
+      payment: {
+        provider: 'MONNIFY',
+        reference: order.paymentRef,
+        accountNumber: account.accountNumber,
+        accountName: account.accountName,
+        bankName: account.bankName,
+        // What the student must send (Monnify may add its fee if fees are customer-borne).
+        amountKobo: monnify.toKobo(account.totalPayable ?? account.amount ?? totalKobo / 100),
+        expiresAt: new Date(Date.now() + (account.accountDurationSeconds ?? 2400) * 1000).toISOString(),
+      },
     };
   } catch (err) {
     await releaseUnpaidOrder(order.id);
-    if (err instanceof paystack.PaystackError) {
-      throw new AppError(502, 'PAYMENT_PROVIDER_ERROR', 'Could not start card payment, please try again');
+    if (err instanceof monnify.MonnifyError) {
+      throw new AppError(502, 'PAYMENT_PROVIDER_ERROR', 'Could not start the bank transfer, please try again');
     }
     throw err;
   }
 }
 
-// Cancel an unpaid card order and return its stock. Safe to call twice.
+// Cancel an unpaid bank-transfer order and return its stock. Safe to call twice.
 async function releaseUnpaidOrder(orderId) {
   return prisma.$transaction(async (tx) => {
     const { count } = await tx.order.updateMany({
@@ -237,7 +258,7 @@ async function releaseUnpaidOrder(orderId) {
   });
 }
 
-// Unpaid card orders older than the TTL give their stock back. Run on a timer
+// Unpaid bank-transfer orders older than the TTL give their stock back. Run on a timer
 // (server.js) and safe to run from several servers at once.
 export async function expireStalePendingOrders(now = new Date()) {
   const cutoff = new Date(now.getTime() - env.PENDING_PAYMENT_TTL_MINUTES * 60_000);
@@ -248,68 +269,74 @@ export async function expireStalePendingOrders(now = new Date()) {
   });
   let expired = 0;
   for (const { id } of stale) if (await releaseUnpaidOrder(id)) expired++;
-  if (expired) logger.info({ expired }, 'Expired unpaid card orders');
+  if (expired) logger.info({ expired }, 'Expired unpaid bank-transfer orders');
   return expired;
 }
 
-// Apply a confirmed Paystack payment. Called by the webhook and by the
-// student's "check payment" button; idempotent, so duplicates are harmless.
+const PAID_STATUSES = ['PAID', 'OVERPAID'];
+
+// Apply a Monnify payment result. Called by the webhook (after re-checking with
+// Monnify) and by the student's "I have sent the transfer" button. Idempotent.
 //   PAID                   → order moves PENDING_PAYMENT → ORDER_PLACED
 //   LATE_PAYMENT_REFUNDED  → order was already cancelled/expired: money goes to the wallet
 //   ALREADY_PROCESSED / NOT_PAID / AMOUNT_MISMATCH / UNKNOWN_REFERENCE
-export async function applyPaystackPayment({ reference, status, amount, currency }) {
-  if (status !== 'success') return 'NOT_PAID';
+// `tx` is Monnify's transaction: { paymentReference, transactionReference,
+// paymentStatus, amountPaid (naira), currency }.
+export async function applyMonnifyPayment(tx) {
+  if (!PAID_STATUSES.includes(tx.paymentStatus)) return 'NOT_PAID';
   const order = await prisma.order.findUnique({
-    where: { paymentRef: reference },
-    select: { id: true, studentId: true, totalKobo: true, paymentMethod: true },
+    where: { paymentRef: tx.paymentReference ?? '' },
+    select: { id: true, studentId: true, totalKobo: true, paymentMethod: true, providerRef: true },
   });
-  if (!order || order.paymentMethod !== 'PAYSTACK') return 'UNKNOWN_REFERENCE';
-  if (amount !== order.totalKobo || currency !== 'NGN') {
+  if (!order || order.paymentMethod !== 'BANK_TRANSFER') return 'UNKNOWN_REFERENCE';
+  if (order.providerRef && tx.transactionReference && order.providerRef !== tx.transactionReference) return 'UNKNOWN_REFERENCE';
+  const paidKobo = monnify.toKobo(tx.amountPaid);
+  if (!(paidKobo >= order.totalKobo) || (tx.currency ?? 'NGN') !== 'NGN') {
     // Never mark paid on a short (or wrong-currency) payment. Needs a human.
-    logger.error({ reference, amount, currency, expected: order.totalKobo }, 'Paystack amount mismatch');
+    logger.error({ reference: tx.paymentReference, paidKobo, expected: order.totalKobo }, 'Monnify amount mismatch');
     return 'AMOUNT_MISMATCH';
   }
 
-  return prisma.$transaction(async (tx) => {
-    const paid = await tx.order.updateMany({
+  return prisma.$transaction(async (t) => {
+    const paid = await t.order.updateMany({
       where: { id: order.id, status: 'PENDING_PAYMENT' },
       data: { status: 'ORDER_PLACED', paidAt: new Date() },
     });
     if (paid.count === 1) return 'PAID';
 
     // Paid after it was cancelled/expired: refund the full amount to the wallet, once.
-    const late = await tx.order.updateMany({
+    const late = await t.order.updateMany({
       where: { id: order.id, status: 'CANCELLED', paidAt: null },
       data: { paidAt: new Date(), refundKobo: order.totalKobo },
     });
     if (late.count === 1) {
-      await tx.user.update({ where: { id: order.studentId }, data: { walletBalanceKobo: { increment: order.totalKobo } } });
-      logger.warn({ reference }, 'Payment arrived after order was cancelled; refunded to wallet');
+      await t.user.update({ where: { id: order.studentId }, data: { walletBalanceKobo: { increment: order.totalKobo } } });
+      logger.warn({ reference: tx.paymentReference }, 'Payment arrived after order was cancelled; refunded to wallet');
       return 'LATE_PAYMENT_REFUNDED';
     }
     return 'ALREADY_PROCESSED';
   });
 }
 
-// Student's "I've paid, check now" button (useful if the webhook is slow):
-// asks Paystack directly, then applies the same idempotent logic.
+// Student's "I have sent the transfer" button: asks Monnify directly, then
+// applies the same idempotent logic. Safe to press repeatedly.
 export async function verifyMyPayment(student, id) {
   const order = await prisma.order.findFirst({
     where: { id, studentId: student.id },
-    select: { paymentRef: true, paymentMethod: true, status: true },
+    select: { providerRef: true, paymentMethod: true, status: true },
   });
   if (!order) throw notFound('Order not found');
-  if (order.paymentMethod === 'PAYSTACK' && order.status === 'PENDING_PAYMENT') {
+  if (order.paymentMethod === 'BANK_TRANSFER' && order.status === 'PENDING_PAYMENT' && order.providerRef) {
     let tx;
     try {
-      tx = await paystack.verifyTransaction(order.paymentRef);
+      tx = await monnify.getTransaction(order.providerRef);
     } catch (err) {
-      if (err instanceof paystack.PaystackError) {
-        throw new AppError(502, 'PAYMENT_PROVIDER_ERROR', 'Could not check payment, please try again');
+      if (err instanceof monnify.MonnifyError) {
+        throw new AppError(502, 'PAYMENT_PROVIDER_ERROR', 'Could not check the transfer, please try again');
       }
       throw err;
     }
-    await applyPaystackPayment(tx);
+    await applyMonnifyPayment(tx);
   }
   return getOrder(student, id);
 }

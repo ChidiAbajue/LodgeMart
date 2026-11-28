@@ -24,12 +24,13 @@ enum OrderStatus {
   RIDER_IN_TRANSIT
   READY_AT_HUB
   COLLECTED
+  LEFT_AT_KIOSK // not collected within the hub dwell window; left at the partnered junction kiosk
   CANCELLED
 }
 
 enum PaymentMethod {
-  WALLET
-  PAYSTACK
+  WALLET        // LodgeMart wallet, funded through the student's Monnify virtual account
+  BANK_TRANSFER // one-time Monnify bank transfer at checkout
 }
 
 enum PayoutStatus {
@@ -53,6 +54,10 @@ model User {
   defaultHubId      String?
   // Vendor login is linked to one vendor stall
   vendorId          String?   @unique
+  // Monnify reserved (virtual) account that funds the wallet. BVN/NIN are never stored.
+  virtualAccountNumber String?
+  virtualAccountName   String?
+  virtualAccountBank   String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -63,6 +68,7 @@ model User {
   stallPickups StallPickup[]
   hubArrivals  HubArrival[]
   earnings     RiderEarning[]
+  walletFundings WalletFunding[]
 }
 
 model CampusZone {
@@ -113,6 +119,7 @@ model Product {
   studentPriceKobo      Int
   kioskComparePriceKobo Int
   emoji                 String?
+  isBulkItem            Boolean @default(false) // oversized (50kg sack, full carton): +₦250 delivery each
   isActive              Boolean @default(true)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -128,8 +135,8 @@ model Vendor {
   stallNumber       String
   bankName          String
   bankAccountNumber String
-  bankCode              String? // Paystack bank code, e.g. "058" GTBank
-  paystackRecipientCode String? // created once, reused for every transfer
+  bankCode          String? // bank code for transfers, e.g. "058" GTBank
+  priorityTier      Boolean  @default(false) // first pick in routing; only while rating >= 4.5
   ratingScore       Decimal  @default(5) @db.Decimal(3, 2)
   ratingCount       Int      @default(0)
   payoutBalanceKobo Int      @default(0) // total released to this vendor
@@ -170,14 +177,18 @@ model Order {
   delegatePhone    String?
   requiresBagMerge Boolean       @default(false)
   subtotalKobo     Int
-  deliveryFeeKobo  Int
+  deliveryFeeKobo  Int // base (tiered by basket value) + bulk surcharge
+  bulkSurchargeKobo Int        @default(0)
   totalKobo        Int
   paymentMethod    PaymentMethod
-  paymentRef       String        @unique
+  paymentRef       String        @unique // our reference (Monnify paymentReference)
+  providerRef      String?       @unique // Monnify transactionReference
   paidAt           DateTime?
   deliveredTo      String?
   collectedAt      DateTime?
   ratedAt          DateTime?
+  replacementCredit Boolean      @default(false) // student flagged an item: owed a replacement
+  leftAtKioskAt    DateTime?
   cancelledAt      DateTime?
   refundKobo       Int?
   createdAt        DateTime      @default(now())
@@ -264,4 +275,18 @@ model RiderEarning {
 
   rider User  @relation(fields: [riderId], references: [id])
   order Order @relation(fields: [orderId], references: [id])
+}
+
+// Money arriving in a student's Monnify virtual account. One row per Monnify
+// transaction, so a repeated webhook can never credit the wallet twice.
+model WalletFunding {
+  id                   String   @id @default(uuid())
+  userId               String
+  amountKobo           Int
+  transactionReference String   @unique
+  createdAt            DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }

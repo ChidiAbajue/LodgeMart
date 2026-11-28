@@ -1,9 +1,5 @@
 import { prisma } from '../config/prisma.js';
-import {
-  CANCELLATION_FEE_KOBO,
-  DELIVERY_FEE_KOBO,
-  MIN_VENDOR_RATING,
-} from '../config/business.js';
+import { CANCELLATION_FEE_KOBO, DELIVERY_FEE, MIN_VENDOR_RATING } from '../config/business.js';
 import { batchDateFor, toDateString } from '../utils/batchDate.js';
 
 // Vendors that may receive orders.
@@ -23,6 +19,7 @@ export async function getCatalog(now = new Date()) {
         emoji: true,
         studentPriceKobo: true,
         kioskComparePriceKobo: true,
+        isBulkItem: true,
         inventory: { where: { stockQty: { gt: 0 }, vendor: routableVendor }, select: { vendorId: true }, take: 1 },
       },
     }),
@@ -40,6 +37,7 @@ export async function getCatalog(now = new Date()) {
       ...s,
       nextBatchDate: toDateString(batchDateFor(s, now)), // the batch an order placed now would join
     })),
-    fees: { deliveryFeeKobo: DELIVERY_FEE_KOBO, cancellationFeeKobo: CANCELLATION_FEE_KOBO },
+    // Delivery fee rules, so the cart can preview the fee. The server recalculates at checkout.
+    fees: { deliveryFee: DELIVERY_FEE, cancellationFeeKobo: CANCELLATION_FEE_KOBO },
   };
 }

@@ -21,15 +21,19 @@ const envSchema = z
       .min(1)
       .transform((s) => s.split(',').map((o) => o.trim()).filter(Boolean)),
 
-    // Paystack. Blank = card payments and vendor transfers are switched off (503).
-    PAYSTACK_SECRET_KEY: z
+    // Monnify (by Moniepoint). Blank = bank transfers, virtual accounts and vendor
+    // payouts are switched off (503). Dashboard → Developer → API Keys & Contracts.
+    MONNIFY_API_KEY: z
       .string()
       .optional()
       .default('')
-      .refine((k) => k === '' || /^sk_(test|live)_[A-Za-z0-9]+$/.test(k), 'must look like sk_test_… or sk_live_…'),
-    PAYSTACK_PUBLIC_KEY: z.string().optional().default(''),
-    PAYSTACK_BASE_URL: z.url().default('https://api.paystack.co'),
-    PAYSTACK_CALLBACK_URL: z.union([z.url(), z.literal('')]).default(''), // where Paystack sends the student after paying
+      .refine((k) => k === '' || /^MK_(TEST|PROD)_[A-Za-z0-9]+$/.test(k), 'must look like MK_TEST_… or MK_PROD_…'),
+    MONNIFY_SECRET_KEY: z.string().optional().default(''),
+    MONNIFY_CONTRACT_CODE: z.string().optional().default('').refine((c) => c === '' || /^\d{6,20}$/.test(c), 'must be digits'),
+    // Your Monnify wallet account number (Disbursements page): vendor payouts are sent from it.
+    MONNIFY_WALLET_ACCOUNT_NUMBER: z.string().optional().default('').refine((a) => a === '' || /^\d{10}$/.test(a), 'must be 10 digits'),
+    MONNIFY_BASE_URL: z.url().default('https://sandbox.monnify.com'),
+    MONNIFY_REDIRECT_URL: z.union([z.url(), z.literal('')]).default(''), // frontend page after checkout
     PENDING_PAYMENT_TTL_MINUTES: z.coerce.number().int().min(5).max(24 * 60).default(30),
 
     // Cloudinary, for stall pickup photos: cloudinary://<api_key>:<api_secret>@<cloud_name>
@@ -56,16 +60,41 @@ const envSchema = z
     path: ['JWT_SECRET'],
     message: 'in production JWT_SECRET must be at least 48 characters',
   })
-  // Safety: live Paystack keys move real money. Only production may use them.
-  .refine((e) => e.NODE_ENV === 'production' || !e.PAYSTACK_SECRET_KEY.startsWith('sk_live_'), {
-    path: ['PAYSTACK_SECRET_KEY'],
-    message: 'a LIVE key is only allowed when NODE_ENV=production — use your sk_test_ key',
+  .refine((e) => e.NODE_ENV !== 'production' || e.CLOUDINARY_URL !== '', {
+    path: ['CLOUDINARY_URL'],
+    message: 'in production stall photos must be verified: set CLOUDINARY_URL',
+  })
+  // Monnify: all three credentials together, or none.
+  .refine((e) => [e.MONNIFY_API_KEY, e.MONNIFY_SECRET_KEY, e.MONNIFY_CONTRACT_CODE].every((v) => v === '') ||
+    [e.MONNIFY_API_KEY, e.MONNIFY_SECRET_KEY, e.MONNIFY_CONTRACT_CODE].every((v) => v !== ''), {
+    path: ['MONNIFY_API_KEY'],
+    message: 'set MONNIFY_API_KEY, MONNIFY_SECRET_KEY and MONNIFY_CONTRACT_CODE together',
+  })
+  // Safety: live Monnify keys / the live API move real money. Only production may use them,
+  // and a test key must never point at the live API (or the other way round).
+  .refine((e) => e.NODE_ENV === 'production' || (!e.MONNIFY_API_KEY.startsWith('MK_PROD_') && !e.MONNIFY_BASE_URL.includes('api.monnify.com')), {
+    path: ['MONNIFY_API_KEY'],
+    message: 'LIVE Monnify keys/API are only allowed when NODE_ENV=production — use your MK_TEST_ key and the sandbox',
+  })
+  .refine((e) => !e.MONNIFY_API_KEY || e.MONNIFY_API_KEY.startsWith('MK_PROD_') === e.MONNIFY_BASE_URL.includes('api.monnify.com'), {
+    path: ['MONNIFY_BASE_URL'],
+    message: 'MK_PROD_ keys go with https://api.monnify.com, MK_TEST_ keys with https://sandbox.monnify.com',
   })
   .transform((e) => {
     const m = e.CLOUDINARY_URL.match(CLOUDINARY_URL_PATTERN);
     return {
       ...e,
       cloudinary: m ? { apiKey: m[1], apiSecret: m[2], cloudName: m[3] } : null,
+      monnify: e.MONNIFY_API_KEY
+        ? {
+            apiKey: e.MONNIFY_API_KEY,
+            secretKey: e.MONNIFY_SECRET_KEY,
+            contractCode: e.MONNIFY_CONTRACT_CODE,
+            walletAccountNumber: e.MONNIFY_WALLET_ACCOUNT_NUMBER,
+            baseUrl: e.MONNIFY_BASE_URL.replace(/\/+$/, ''),
+            redirectUrl: e.MONNIFY_REDIRECT_URL,
+          }
+        : null,
     };
   });
 

@@ -9,6 +9,7 @@ export default defineConfig({
   test: {
     env: testEnv,
     globalSetup: './tests/globalSetup.js',
+    setupFiles: ['./tests/setup.js'], // fake Monnify, no real network
     fileParallelism: false, // tests share one database
     testTimeout: 15000,
     hookTimeout: 30000, // setup hooks hash passwords (bcrypt cost 12) — slow on busy machines

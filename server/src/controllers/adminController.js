@@ -47,7 +47,7 @@ export async function listPayouts(req, res) {
   res.json({ payouts: await payoutService.listPayouts(payoutQuery.parse(req.query)) });
 }
 
-// POST /api/admin/payouts/run — send all pending/failed vendor payouts via Paystack.
+// POST /api/admin/payouts/run — send all pending/failed vendor payouts via Monnify (re-checks in-flight transfers first).
 export async function runPayouts(req, res) {
   res.json(await payoutService.runPayouts());
 }

@@ -1,6 +1,7 @@
 import { prisma } from '../config/prisma.js';
 import { AppError, forbidden, notFound } from '../utils/errors.js';
 import { toDateString } from '../utils/batchDate.js';
+import { PRIORITY_MIN_RATING } from '../config/business.js';
 
 // Line-item rating, ported from submitOrderRating() in the prototype:
 //   4–5 stars → every item and every vendor in the order gets that score.
@@ -31,7 +32,7 @@ export async function rateOrder(student, orderId, { stars, flaggedItems }) {
       select: { id: true, status: true, items: { select: { id: true, vendorId: true } } },
     });
     if (!order) throw notFound('Order not found');
-    if (order.status !== 'COLLECTED') {
+    if (!['COLLECTED', 'LEFT_AT_KIOSK'].includes(order.status)) {
       throw new AppError(409, 'NOT_COLLECTED', 'You can rate an order after you have collected it');
     }
 
@@ -43,7 +44,12 @@ export async function rateOrder(student, orderId, { stars, flaggedItems }) {
     }
 
     // Rated exactly once: this conditional update is the gate (double-submit safe).
-    const gate = await tx.order.updateMany({ where: { id: orderId, ratedAt: null }, data: { ratedAt: new Date() } });
+    // Flagging an item (1–3★) earns the student a replacement credit (Chidi's update).
+    const replacementCredit = stars <= 3 && flaggedItems.length > 0;
+    const gate = await tx.order.updateMany({
+      where: { id: orderId, ratedAt: null },
+      data: { ratedAt: new Date(), replacementCredit },
+    });
     if (gate.count === 0) throw new AppError(409, 'ALREADY_RATED', 'You have already rated this order');
 
     const { itemUpdates, vendorScores } = planRating(order.items, stars, flaggedItems);
@@ -62,10 +68,14 @@ export async function rateOrder(student, orderId, { stars, flaggedItems }) {
       });
       const oldCount = locked.ratingCount - 1;
       const newScore = Math.round(((Number(locked.ratingScore) * oldCount + score) / locked.ratingCount) * 100) / 100;
-      await tx.vendor.update({ where: { id: vendorId }, data: { ratingScore: newScore } });
+      // Priority Supplier Tier is only kept while rated >= 4.5★.
+      await tx.vendor.update({
+        where: { id: vendorId },
+        data: { ratingScore: newScore, ...(newScore < PRIORITY_MIN_RATING && { priorityTier: false }) },
+      });
       vendors.push({ vendorId, appliedRating: score, newScore, ratingCount: locked.ratingCount });
     }
-    return { orderId, stars, items: itemUpdates, vendors };
+    return { orderId, stars, replacementCredit, items: itemUpdates, vendors };
   });
 }
 

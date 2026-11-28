@@ -4,13 +4,13 @@ import { personName, nigerianPhone } from './authSchema.js';
 const email = z.string().trim().toLowerCase().max(254).pipe(z.email('Enter a valid email address'));
 const date = z.iso.date('Use YYYY-MM-DD');
 const text = (max) => z.string().trim().min(1).max(max);
-const bankCode = z.string().trim().regex(/^\d{3,6}$/, 'Bank code is 3–6 digits (Paystack bank code)');
+const bankCode = z.string().trim().regex(/^\d{3,6}$/, 'Bank code is 3–6 digits (e.g. 058 GTBank, 50515 Moniepoint)');
 const accountNumber = z.string().trim().regex(/^\d{10}$/, 'Account number must be 10 digits (NUBAN)');
 
 export const summaryQuery = z.strictObject({ from: date.optional(), to: date.optional() });
 
 export const adminOrdersQuery = z.strictObject({
-  status: z.enum(['PENDING_PAYMENT', 'ORDER_PLACED', 'PACKED_AT_MARKET', 'RIDER_IN_TRANSIT', 'READY_AT_HUB', 'COLLECTED', 'CANCELLED']).optional(),
+  status: z.enum(['PENDING_PAYMENT', 'ORDER_PLACED', 'PACKED_AT_MARKET', 'RIDER_IN_TRANSIT', 'READY_AT_HUB', 'COLLECTED', 'LEFT_AT_KIOSK', 'CANCELLED']).optional(),
   batchDate: date.optional(),
   page: z.coerce.number().int().min(1).max(1000).default(1),
 });
@@ -55,5 +55,6 @@ export const updateVendorSchema = z
     bankCode: bankCode.optional(),
     bankAccountNumber: accountNumber.optional(),
     isActive: z.boolean().optional(),
+    priorityTier: z.boolean().optional(),
   })
   .refine((d) => Object.keys(d).length > 0, 'Nothing to update');

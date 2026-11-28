@@ -57,15 +57,17 @@ const products = [
   ['sku-milo', 'Milo + Peak Milk Refill', 'Twin Combo (400g + 350g)', 'Provisions', 5900, 7600, '☕'],
   ['sku-detergent', 'Ariel Washing Powder', '900g Family Pack', 'Hostel Essentials', 2100, 2800, '🧼'],
 ];
+// Oversized items (+₦250 delivery each): full cartons / big sacks (Chidi's update).
+const BULK_ITEMS = new Set(['sku-indomie']);
 const vendors = [
   {
     id: 'v-emeka', name: 'Oga Emeka', stallNumber: 'Stall B-14', bankName: 'GTBank', bankCode: '058', bankAccountNumber: '0123456789',
-    ratingScore: 4.8, ratingCount: 24,
+    ratingScore: 4.8, ratingCount: 24, priorityTier: true,
     inventory: { 'sku-rice': [4700, 45], 'sku-garri': [2450, 60], 'sku-oil': [2350, 40], 'sku-spaghetti': [3900, 35] },
   },
   {
     id: 'v-ngozi', name: 'Mama Ngozi', stallNumber: 'Stall C-08', bankName: 'Access Bank', bankCode: '044', bankAccountNumber: '9876543210',
-    ratingScore: 4.6, ratingCount: 19,
+    ratingScore: 4.6, ratingCount: 19, priorityTier: true,
     inventory: { 'sku-beans': [5500, 30], 'sku-indomie': [7750, 25], 'sku-milo': [5350, 28], 'sku-detergent': [1800, 50] },
   },
   {
@@ -96,7 +98,7 @@ async function seedReference() {
   for (const [id, name, unit, category, price, kiosk, emoji] of products) {
     await prisma.product.upsert({
       where: { id },
-      create: { id, name, unit, category, emoji, studentPriceKobo: k(price), kioskComparePriceKobo: k(kiosk) },
+      create: { id, name, unit, category, emoji, studentPriceKobo: k(price), kioskComparePriceKobo: k(kiosk), isBulkItem: BULK_ITEMS.has(id) },
       update: {},
     });
   }
@@ -133,6 +135,7 @@ async function main() {
   await prisma.product.createMany({
     data: products.map(([id, name, unit, category, price, kiosk, emoji]) => ({
       id, name, unit, category, emoji, studentPriceKobo: k(price), kioskComparePriceKobo: k(kiosk),
+      isBulkItem: BULK_ITEMS.has(id),
     })),
   });
   for (const v of vendors) {
@@ -140,7 +143,7 @@ async function main() {
       data: {
         id: v.id, name: v.name, market: 'Eke Awka', stallNumber: v.stallNumber,
         bankName: v.bankName, bankCode: v.bankCode, bankAccountNumber: v.bankAccountNumber,
-        ratingScore: v.ratingScore, ratingCount: v.ratingCount,
+        ratingScore: v.ratingScore, ratingCount: v.ratingCount, priorityTier: v.priorityTier ?? false,
         inventory: {
           create: Object.entries(v.inventory).map(([productId, [price, qty]]) => ({
             productId, wholesalePriceKobo: k(price), stockQty: qty,

@@ -10,7 +10,8 @@ await connectRedis();
 
 const server = createApp().listen(env.PORT, () => {
   logger.info(`LodgeMart API listening on http://localhost:${env.PORT}`);
-  if (!env.PAYSTACK_SECRET_KEY) logger.warn('PAYSTACK_SECRET_KEY not set: card payments and payouts disabled');
+  if (!env.monnify) logger.warn('MONNIFY_* not set: bank transfers, wallet funding and vendor payouts disabled');
+  else if (!env.monnify.walletAccountNumber) logger.warn('MONNIFY_WALLET_ACCOUNT_NUMBER not set: vendor payouts disabled');
   if (!env.cloudinary) logger.warn('CLOUDINARY_URL not set: stall photo uploads disabled (any https photoUrl accepted)');
 });
 
