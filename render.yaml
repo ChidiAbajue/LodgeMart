@@ -1,0 +1,44 @@
+# Render Blueprint for the LodgeMart API (https://render.com/docs/blueprint-spec).
+# Render → New → Blueprint → pick this repo/branch. Every secret below is marked
+# sync: false, so Render asks for it in the dashboard; nothing secret lives in git.
+# Full walkthrough: docs/DEPLOYMENT.md
+services:
+  - type: web
+    name: lodgemart-api
+    runtime: node
+    rootDir: server
+    plan: starter            # free plan sleeps after 15 min idle (slow first request, expiry timer pauses)
+    region: frankfurt        # closest Render region to Nigeria
+    buildCommand: npm ci --include=dev && npm run build
+    preDeployCommand: npx prisma migrate deploy
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL          # Supabase session pooler URI (no ?sslmode)
+        sync: false
+      - key: MIGRATE_DATABASE_URL  # same URI + ?sslmode=require (used by prisma migrate)
+        sync: false
+      - key: DATABASE_SSL
+        value: verify
+      - key: DATABASE_CA_CERT      # Supabase → Database settings → SSL → download certificate (paste PEM)
+        sync: false
+      - key: REDIS_URL             # Upstash rediss:// URL
+        sync: false
+      - key: JWT_SECRET            # 96 hex chars: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 1d
+      - key: CLIENT_URL
+        value: https://lodge-mart.vercel.app
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false
+      - key: PAYSTACK_CALLBACK_URL
+        value: https://lodge-mart.vercel.app/orders
+      - key: CLOUDINARY_URL
+        sync: false
