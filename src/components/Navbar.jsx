@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion, useScroll, useMotionValueEvent } from 'motion/react';
 import {
   ShoppingBag,
   PackageCheck,
@@ -11,6 +12,30 @@ import {
   Wallet,
 } from 'lucide-react';
 import { useLodgeMart } from '../context/LodgeMartContext';
+import Logo from './brand/Logo';
+import { SPRING, SPRING_POP } from '../lib/motion';
+
+function CountBadge({ count, className = '' }) {
+  return (
+    <AnimatePresence initial={false}>
+      {count > 0 && (
+        <motion.span
+          key={count}
+          initial={{ scale: 0.4, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.4, opacity: 0 }}
+          transition={SPRING_POP}
+          className={`min-w-5 h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-accent-500 text-ink text-[11px] font-bold tabular-nums ${className}`}
+        >
+          {count}
+        </motion.span>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// Pages that open with a dark photo header, so the bar starts transparent over it.
+const PHOTO_HEADER_ROUTES = ['/', '/shop', '/orders', '/vendor', '/rider', '/admin'];
 
 export default function Navbar() {
   const { currentUser, logout, walletBalance, cart } = useLodgeMart();
@@ -18,6 +43,12 @@ export default function Navbar() {
   const navigate = useNavigate();
 
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
+
+  // Over the landing hero photo the bar is transparent; once scrolled it turns solid white.
+  const { scrollY } = useScroll();
+  const [scrolled, setScrolled] = useState(false);
+  useMotionValueEvent(scrollY, 'change', (y) => setScrolled(y > 80));
+  const dark = PHOTO_HEADER_ROUTES.includes(location.pathname) && !scrolled;
 
   const handleLogout = () => {
     logout();
@@ -47,73 +78,49 @@ export default function Navbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2.5">
-            <svg
-              width="36"
-              height="36"
-              viewBox="0 0 36 36"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-              className="shrink-0"
-            >
-              <rect width="36" height="36" rx="10" fill="#047857" />
-              <path
-                d="M11 15.5H25L23.5 25.5H12.5L11 15.5Z"
-                stroke="white"
-                strokeWidth="2"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M14.5 15.5V13C14.5 11.067 16.067 9.5 18 9.5C19.933 9.5 21.5 11.067 21.5 13V15.5"
-                stroke="white"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-              <circle cx="18" cy="20.5" r="1.5" fill="#FBBF24" />
-            </svg>
-            <div className="flex items-baseline gap-2">
-              <span className="font-bold text-slate-900 text-lg tracking-tight">
-                LodgeMart
-              </span>
-              <span className="hidden sm:inline-block text-xs font-medium text-emerald-700">
-                UNIZIK
-              </span>
-            </div>
+      <header
+        className={`sticky top-0 z-40 transition-[background-color,border-color,color] duration-500 ${
+          dark
+            ? 'bg-transparent text-white'
+            : 'bg-white text-ink shadow-[0_6px_24px_-12px_rgb(0_0_0/0.25)]'
+        }`}
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          <Link to="/" className="flex items-center gap-3 rounded-lg" aria-label="LodgeMart home">
+            <Logo markClassName="h-8 w-auto" animated tone={dark ? 'light' : 'brand'} />
+            <span className={`hidden sm:inline-block font-display text-[10px] font-medium uppercase tracking-[0.2em] px-2 py-1 rounded border ${dark ? 'border-white/30 text-white/80' : 'border-brand-700/30 text-brand-700'}`}>
+              UNIZIK Pilot
+            </span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden md:flex items-center gap-8" aria-label="Main">
             {navItems.map((item) => {
-              const Icon = item.icon;
               const active = location.pathname === item.to;
               return (
                 <Link
                   key={item.to}
                   to={item.to}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    active
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  aria-current={active ? 'page' : undefined}
+                  className={`group/nav relative flex items-center gap-2 h-10 font-display text-sm font-medium uppercase tracking-[0.14em] transition-colors ${
+                    active ? (dark ? 'text-white' : 'text-ink') : dark ? 'text-white/75 hover:text-white' : 'text-muted hover:text-ink'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
-                  <span>{item.label}</span>
-                  {item.badge > 0 && (
-                    <span className="ml-1 px-1.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-700 text-white">
-                      {item.badge}
-                    </span>
-                  )}
+                  <span className="relative">{item.label}</span>
+                  <span
+                    className={`absolute inset-x-0 bottom-1 h-0.5 origin-left bg-accent-500 transition-transform duration-300 ease-[cubic-bezier(0.7,0,0.2,1)] ${
+                      active ? 'scale-x-100' : 'scale-x-0 group-hover/nav:scale-x-100'
+                    }`}
+                  />
+                  {item.badge !== undefined && <CountBadge count={item.badge} className="relative" />}
                 </Link>
               );
             })}
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             {(!currentUser || currentUser.role === 'student') && (
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700">
-                <Wallet className="w-3.5 h-3.5 text-emerald-700" />
+              <div className="hidden sm:flex items-center gap-1.5 h-9 font-display text-sm font-medium tracking-[0.06em] tabular-nums">
+                <Wallet className="w-4 h-4 text-accent-500" />
                 <span>₦{walletBalance.toLocaleString()}</span>
               </div>
             )}
@@ -121,26 +128,22 @@ export default function Navbar() {
             {currentUser ? (
               <div className="flex items-center gap-2.5">
                 <div className="hidden sm:block text-right">
-                  <p className="text-xs font-semibold text-slate-900 leading-tight">
-                    {currentUser.name}
-                  </p>
-                  <p className="text-[11px] text-slate-500 capitalize">
-                    {currentUser.role}
-                  </p>
+                  <p className="font-display text-sm font-medium uppercase tracking-[0.06em] leading-tight">{currentUser.name}</p>
+                  <p className="text-xs opacity-60 capitalize">{currentUser.role}</p>
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+                  className={`flex items-center gap-1.5 h-10 px-4 rounded-md border-2 font-display text-xs font-medium uppercase tracking-[0.14em] transition-colors duration-300 active:scale-[0.97] cursor-pointer ${dark ? 'border-white/70 hover:bg-white hover:text-ink' : 'border-ink hover:bg-ink hover:text-white'}`}
                   title="Sign out"
                 >
-                  <LogOut className="w-3.5 h-3.5" />
+                  <LogOut className="w-4 h-4" />
                   <span className="hidden sm:inline">Sign Out</span>
                 </button>
               </div>
             ) : (
               <Link
                 to="/login"
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-700 text-white text-sm font-medium hover:bg-emerald-800 transition-colors"
+                className={`flex items-center gap-1.5 h-10 px-5 rounded-md border-2 font-display text-xs font-medium uppercase tracking-[0.14em] transition-colors duration-300 active:scale-[0.97] ${dark ? 'border-white/80 text-white hover:bg-white hover:text-ink' : 'border-ink text-ink hover:bg-ink hover:text-white'}`}
               >
                 <LogIn className="w-4 h-4" />
                 <span>Sign In</span>
@@ -150,9 +153,12 @@ export default function Navbar() {
         </div>
       </header>
 
-      {/* Mobile Bottom Navigation (< 768px) for Student, Vendor, Rider */}
+      {/* Mobile bottom navigation (< 768px) for student, vendor, rider */}
       {(!currentUser || currentUser.role !== 'admin') && (
-        <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 flex items-center justify-around h-16 px-2">
+        <nav
+          className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white shadow-[0_-6px_24px_-12px_rgb(0_0_0/0.25)] flex items-center justify-around h-16 px-2 pb-[env(safe-area-inset-bottom)]"
+          aria-label="Main"
+        >
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = location.pathname === item.to;
@@ -160,18 +166,24 @@ export default function Navbar() {
               <Link
                 key={item.to}
                 to={item.to}
-                className={`flex flex-col items-center justify-center gap-1 px-4 py-1.5 rounded-lg text-xs font-medium ${
-                  active ? 'text-emerald-700' : 'text-slate-500'
+                aria-current={active ? 'page' : undefined}
+                className={`relative flex flex-col items-center justify-center gap-1 min-w-20 h-12 font-display text-[11px] font-medium uppercase tracking-[0.12em] transition-colors ${
+                  active ? 'text-accent-600' : 'text-muted'
                 }`}
               >
-                <div className="relative">
+                {active && (
+                  <motion.span
+                    layoutId="tab-dot"
+                    transition={SPRING}
+                    className="absolute -top-2 h-1 w-8 rounded-full bg-accent-500"
+                  />
+                )}
+                <span className="relative">
                   <Icon className="w-5 h-5" />
-                  {item.badge > 0 && (
-                    <span className="absolute -top-1.5 -right-2 px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-emerald-700 text-white">
-                      {item.badge}
-                    </span>
+                  {item.badge !== undefined && (
+                    <CountBadge count={item.badge} className="absolute -top-2 -right-3" />
                   )}
-                </div>
+                </span>
                 <span>{item.label}</span>
               </Link>
             );

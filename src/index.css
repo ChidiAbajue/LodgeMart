@@ -1,10 +1,100 @@
 @import "tailwindcss";
 
+/* LodgeMart design tokens — colours sampled from the brand logo (green #144E2F, orange #F28724). */
+@theme {
+  --font-sans: 'Source Sans 3 Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Oswald Variable', 'Arial Narrow', ui-sans-serif, sans-serif;
+  --color-night: #07130d;
+  --color-night-2: #0c1f15;
+
+  --color-brand-50: #eef5f0;
+  --color-brand-100: #d5e8db;
+  --color-brand-200: #abd1b8;
+  --color-brand-300: #78b28f;
+  --color-brand-400: #4a9068;
+  --color-brand-500: #2c7349;
+  --color-brand-600: #1d5f3b;
+  --color-brand-700: #144e2f;
+  --color-brand-800: #0f3d25;
+  --color-brand-900: #0a2c1a;
+
+  /* Orange: fills, badges, large type. For small text on white use accent-700 (AA). */
+  --color-accent-50: #fff5eb;
+  --color-accent-100: #fee6cc;
+  --color-accent-200: #fccb98;
+  --color-accent-300: #f9ad62;
+  --color-accent-400: #f59a3f;
+  --color-accent-500: #f28724;
+  --color-accent-600: #d96f12;
+  --color-accent-700: #b3570c;
+
+  --color-ink: #13201a;
+  --color-muted: #5b6b61;
+  --color-line: #e6e9e3;
+  --color-canvas: #f7f5f0;
+  --color-cream: #fbf4e6;
+  --color-tile: #efece5;
+  --color-mint: #e3f0e7;
+  --color-peach: #fde7d3;
+
+  --shadow-card: 0 1px 2px rgb(19 32 26 / 0.04), 0 4px 16px -6px rgb(19 32 26 / 0.08);
+  --shadow-hard: 4px 4px 0 0 var(--color-ink);
+  --shadow-hard-lg: 6px 6px 0 0 var(--color-ink);
+  --shadow-lift: 0 2px 4px rgb(19 32 26 / 0.05), 0 14px 32px -10px rgb(19 32 26 / 0.18);
+}
+
 @layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
   body {
-    background-color: #f8fafc;
-    color: #0f172a;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'tnum' 0;
+  }
+  :focus-visible {
+    outline: 2.5px solid var(--color-accent-500);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  ::selection {
+    background: var(--color-accent-200);
+    color: var(--color-ink);
+  }
+}
+
+/* Savings slider: ink track, white thumb */
+.lm-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(19 32 26 / 0.25);
+}
+.lm-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #fff;
+  border: 3px solid var(--color-ink);
+  transition: transform 0.2s;
+}
+.lm-range::-webkit-slider-thumb:hover { transform: scale(1.15); }
+.lm-range::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #fff;
+  border: 3px solid var(--color-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
   }
 }

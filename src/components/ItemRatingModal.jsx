@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { X, Star, AlertTriangle } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { Star, AlertTriangle } from 'lucide-react';
 import { useLodgeMart } from '../context/LodgeMartContext';
+import Modal, { ActionButton } from './ui/Modal';
 
-const ISSUE_TAGS = ['Short measure', 'Weevils / Dusty', 'Damaged pack', 'Missing item'];
+const ISSUE_TAGS = ['Short Measure', 'Weevils/Dusty', 'Damaged Pack'];
 
 export default function ItemRatingModal({ isOpen, onClose, order, items }) {
   const { submitOrderRating } = useLodgeMart();
@@ -33,93 +35,77 @@ export default function ItemRatingModal({ isOpen, onClose, order, items }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-md rounded-2xl border border-slate-200 overflow-hidden shadow-xl">
-        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-          <div>
-            <h3 className="font-bold text-slate-900 text-base">Rate Your Batch Order</h3>
-            <p className="text-xs text-slate-500">Order {order.id} • Blind Vendor Quality</p>
+    <Modal open onClose={onClose} title="Rate your batch order" subtitle={`Order ${order.id} · Blind vendor quality`} icon={Star}>
+      <div className="space-y-6">
+        <div className="text-center">
+          <p className="text-[0.95rem] font-semibold text-ink">How was the quality &amp; measure of your items?</p>
+          <div className="mt-3 flex items-center justify-center gap-1.5" role="radiogroup" aria-label="Star rating">
+            {[1, 2, 3, 4, 5].map((num) => (
+              <motion.button
+                key={num}
+                type="button"
+                role="radio"
+                aria-checked={num === stars}
+                aria-label={`${num} star${num > 1 ? 's' : ''}`}
+                onClick={() => setStars(num)}
+                whileHover={{ scale: 1.15 }}
+                whileTap={{ scale: 0.85 }}
+                className="p-1.5 cursor-pointer"
+              >
+                <motion.span
+                  className="block"
+                  animate={num <= stars ? { scale: [1, 1.25, 1] } : { scale: 1 }}
+                  transition={{ duration: 0.3, delay: num <= stars ? num * 0.04 : 0 }}
+                >
+                  <Star className={`h-10 w-10 ${num <= stars ? 'fill-accent-500 text-accent-500' : 'text-ink/20'}`} />
+                </motion.span>
+              </motion.button>
+            ))}
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <p className="mt-2 text-sm text-muted">
+            {stars >= 4
+              ? '4–5 stars credits all fulfilling stalls equally.'
+              : '1–3 stars: select only the specific item(s) with an issue.'}
+          </p>
         </div>
 
-        <div className="p-5 space-y-5">
-          <div className="text-center space-y-2">
-            <p className="text-sm font-medium text-slate-700">
-              How was the quality &amp; measure of your items?
-            </p>
-            <div className="flex items-center justify-center gap-2">
-              {[1, 2, 3, 4, 5].map((num) => (
-                <button
-                  key={num}
-                  type="button"
-                  aria-label={`Rate ${num} star${num > 1 ? 's' : ''}`}
-                  onClick={() => setStars(num)}
-                  className="p-1.5 cursor-pointer transition-transform hover:scale-110"
-                >
-                  <Star
-                    className={`w-8 h-8 ${
-                      num <= stars
-                        ? 'fill-amber-500 text-amber-500'
-                        : 'text-slate-300'
-                    }`}
-                  />
-                </button>
-              ))}
-            </div>
-            <p className="text-xs font-semibold text-slate-700">
-              {['Poor', 'Fair', 'Good', 'Great', 'Excellent'][stars - 1]} ({stars}/5)
-            </p>
-            <p className="text-xs text-slate-500">
-              {stars >= 4
-                ? '4–5 stars credits all fulfilling stalls equally.'
-                : '1–3 stars: select only the specific item(s) with an issue.'}
-            </p>
-          </div>
-
+        <AnimatePresence initial={false}>
           {stars <= 3 && (
-            <div className="space-y-2.5 p-3.5 rounded-xl bg-amber-50/70 border border-amber-200">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-800">
-                <AlertTriangle className="w-4 h-4" />
-                <span>Which item had an issue?</span>
-              </div>
-
-              <div className="space-y-2">
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.35, ease: [0.7, 0, 0.2, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="space-y-3 rounded-md border-2 border-accent-200 bg-accent-50 p-4">
+                <p className="flex items-center gap-2 font-display text-xs font-medium uppercase tracking-[0.18em] text-accent-700">
+                  <AlertTriangle className="h-4 w-4" /> Which item had an issue?
+                </p>
                 {items.map((item) => {
                   const isFlagged = Boolean(flaggedItems[item.itemId]);
                   return (
-                    <div
-                      key={item.itemId}
-                      className="p-2.5 rounded-lg bg-white border border-amber-200 space-y-2"
-                    >
-                      <label className="flex items-center gap-2.5 cursor-pointer">
+                    <div key={item.itemId} className="rounded-md border-2 border-ink/10 bg-white p-3">
+                      <label className="flex cursor-pointer items-center gap-3">
                         <input
                           type="checkbox"
                           checked={isFlagged}
                           onChange={() => toggleFlagItem(item.itemId)}
-                          className="accent-amber-600"
+                          className="h-4 w-4 accent-accent-600"
                         />
-                        <span className="text-xs font-semibold text-slate-900">
+                        <span className="text-sm font-semibold text-ink">
                           {item.productName} ({item.qty}x)
                         </span>
                       </label>
-
                       {isFlagged && (
-                        <div className="flex flex-wrap gap-1.5 pl-6">
+                        <div className="mt-2.5 flex flex-wrap gap-2 pl-7">
                           {ISSUE_TAGS.map((tag) => (
                             <button
                               key={tag}
                               type="button"
                               onClick={() => setIssueTag(item.itemId, tag)}
-                              className={`px-2 py-1 rounded text-[11px] font-medium border cursor-pointer ${
-                                flaggedItems[item.itemId] === tag
-                                  ? 'bg-amber-600 text-white border-amber-600'
-                                  : 'bg-slate-50 text-slate-600 border-slate-200'
+                              className={`rounded px-2.5 py-1.5 font-display text-[11px] uppercase tracking-[0.1em] transition-colors cursor-pointer ${
+                                flaggedItems[item.itemId] === tag ? 'bg-ink text-white' : 'bg-tile text-ink hover:bg-ink/10'
                               }`}
                             >
                               {tag}
@@ -131,17 +117,12 @@ export default function ItemRatingModal({ isOpen, onClose, order, items }) {
                   );
                 })}
               </div>
-            </div>
+            </motion.div>
           )}
+        </AnimatePresence>
 
-          <button
-            onClick={handleSubmit}
-            className="w-full py-3 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-sm cursor-pointer"
-          >
-            Submit Blind Quality Rating
-          </button>
-        </div>
+        <ActionButton onClick={handleSubmit}>Submit blind quality rating</ActionButton>
       </div>
-    </div>
+    </Modal>
   );
 }

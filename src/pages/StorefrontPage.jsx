@@ -1,28 +1,37 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  MapPin,
-  ShoppingCart,
-  Plus,
-  Minus,
-  X,
-  Clock,
-  Sparkles,
-  CheckCircle2,
-  Search,
-  Wheat,
-  Droplets,
-  Package,
-  Coffee,
-} from 'lucide-react';
-import { CAMPUS_ZONES, BATCH_SLOTS, calculateDeliveryFee } from '../data/seedData';
+import { AnimatePresence, motion } from 'motion/react';
+import { MapPin, ShoppingBasket, Plus, Minus, X, Clock, BadgePercent, ArrowRight, ChevronDown } from 'lucide-react';
+import { CAMPUS_ZONES, BATCH_SLOTS, DELIVERY_FEE } from '../data/seedData';
 import { useLodgeMart } from '../context/LodgeMartContext';
+import { getProductImage } from '../data/productImages';
 import CheckoutModal from '../components/CheckoutModal';
+import PageHeader from '../components/ui/PageHeader';
+import ProductCard from '../components/ui/ProductCard';
+import Button from '../components/ui/Button';
+
+const SNAP = [0.7, 0, 0.2, 1];
+const OUT = [0.16, 1, 0.3, 1];
+
+function Select({ label, value, onChange, children }) {
+  return (
+    <label className="relative flex min-w-0 items-center">
+      <span className="sr-only">{label}</span>
+      <select
+        value={value}
+        onChange={onChange}
+        className="h-10 w-full appearance-none truncate rounded-md border-2 border-ink/10 bg-white pl-3 pr-9 font-display text-sm font-medium uppercase tracking-[0.06em] text-ink transition-colors hover:border-ink/30 focus:border-accent-500 focus:outline-none cursor-pointer"
+      >
+        {children}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2.5 h-4 w-4 text-muted" />
+    </label>
+  );
+}
 
 export default function StorefrontPage() {
   const {
     products,
-    vendors,
     selectedZone,
     handleZoneChange,
     selectedHub,
@@ -36,39 +45,14 @@ export default function StorefrontPage() {
 
   const navigate = useNavigate();
   const [category, setCategory] = useState('All');
-  const [searchQuery, setSearchQuery] = useState('');
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   const currentZoneObj = CAMPUS_ZONES.find((z) => z.name === selectedZone) || CAMPUS_ZONES[0];
   const categories = ['All', ...new Set(products.map((p) => p.category))];
 
-  const filteredProducts = products.filter((p) => {
-    const matchesCat = category === 'All' || p.category === category;
-    const matchesQuery =
-      !searchQuery.trim() ||
-      p.name.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
-      p.unit.toLowerCase().includes(searchQuery.trim().toLowerCase());
-    return matchesCat && matchesQuery;
-  });
-
-  const getAvailableStock = (productId) =>
-    vendors
-      .filter((v) => v.ratingScore >= 3.5)
-      .reduce((sum, v) => sum + (v.inventory[productId]?.stockQty || 0), 0);
-
-  const getCategoryIcon = (cat) => {
-    switch (cat) {
-      case 'Grains & Staples':
-        return Wheat;
-      case 'Cooking Oils':
-        return Droplets;
-      case 'Provisions':
-        return Coffee;
-      default:
-        return Package;
-    }
-  };
+  const filteredProducts =
+    category === 'All' ? products : products.filter((p) => p.category === category);
 
   const cartDetails = cart
     .map((item) => {
@@ -77,20 +61,18 @@ export default function StorefrontPage() {
     })
     .filter(Boolean);
 
-  const {
-    baseFee,
-    bulkSurcharge,
-    totalFee: deliveryFee,
-    itemsSubtotal,
-    bulkCount,
-  } = calculateDeliveryFee(cart, products);
+  const itemsSubtotal = cartDetails.reduce(
+    (sum, item) => sum + item.product.studentPrice * item.qty,
+    0
+  );
   const kioskSubtotal = cartDetails.reduce(
     (sum, item) => sum + item.product.kioskComparePrice * item.qty,
     0
   );
   const totalSavings = kioskSubtotal - itemsSubtotal;
-  const totalPayable = itemsSubtotal > 0 ? itemsSubtotal + deliveryFee : 0;
+  const totalPayable = itemsSubtotal > 0 ? itemsSubtotal + DELIVERY_FEE : 0;
   const cartCount = cart.reduce((sum, i) => sum + i.qty, 0);
+  const qtyOf = (id) => cart.find((i) => i.productId === id)?.qty || 0;
 
   const handleOrderSuccess = () => {
     setCheckoutOpen(false);
@@ -99,322 +81,286 @@ export default function StorefrontPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 md:pb-12">
-      {/* Sticky Zone & Hub Selector Bar */}
-      <div className="sticky top-16 z-30 bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
-              <MapPin className="w-4 h-4" />
-              <span>Campus Zone:</span>
-            </div>
-            <select
-              value={selectedZone}
-              onChange={(e) => handleZoneChange(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-900 focus:outline-none focus:border-emerald-700"
-            >
+    <div className="min-h-screen bg-canvas pb-24 md:pb-16">
+      <PageHeader kicker="Eke Awka stalls · one batch" title="Unified market">
+        <p className="mt-4 max-w-xl text-base sm:text-lg text-white/75">
+          One basket, many stalls. Every item is routed to the best-rated stall that has it in stock.
+        </p>
+      </PageHeader>
+
+      {/* Sticky zone + hub bar */}
+      <div className="sticky top-16 z-30 bg-white shadow-[0_6px_20px_-14px_rgb(0_0_0/0.35)]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="grid w-full grid-cols-2 items-center gap-2 md:flex md:w-auto">
+            <span className="hidden md:flex items-center gap-1.5 font-display text-xs font-medium uppercase tracking-[0.18em] text-accent-700">
+              <MapPin className="h-4 w-4" /> Drop-off
+            </span>
+            <Select label="Campus zone" value={selectedZone} onChange={(e) => handleZoneChange(e.target.value)}>
               {CAMPUS_ZONES.map((z) => (
-                <option key={z.id} value={z.name}>
-                  {z.name}
-                </option>
+                <option key={z.id} value={z.name}>{z.name}</option>
               ))}
-            </select>
-
-            <span className="text-slate-300">/</span>
-
-            <select
-              value={selectedHub}
-              onChange={(e) => setSelectedHub(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-900 focus:outline-none focus:border-emerald-700"
-            >
+            </Select>
+            <Select label="Pickup hub" value={selectedHub} onChange={(e) => setSelectedHub(e.target.value)}>
               {currentZoneObj.hubs.map((hub) => (
-                <option key={hub} value={hub}>
-                  {hub}
-                </option>
+                <option key={hub} value={hub}>{hub}</option>
               ))}
-            </select>
+            </Select>
           </div>
 
-          <button
-            onClick={() => setCartOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold cursor-pointer"
-          >
-            <ShoppingCart className="w-4 h-4" />
-            <span>Basket ({cartCount})</span>
-            {itemsSubtotal > 0 && <span>• ₦{itemsSubtotal.toLocaleString()}</span>}
-          </button>
+          <div className="hidden md:block">
+            <Button onClick={() => setCartOpen(true)} size="sm" variant="accent">
+              <ShoppingBasket className="h-4 w-4" />
+              Basket ({cartCount})
+              {itemsSubtotal > 0 && <span>· ₦{itemsSubtotal.toLocaleString()}</span>}
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Search & Category Filter */}
-      <div className="max-w-7xl mx-auto px-4 pt-6 pb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="relative w-full sm:w-72">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search rice, garri, indomie..."
-            aria-label="Search products"
-            className="w-full pl-9 pr-3.5 py-2 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:border-emerald-700"
-          />
-        </div>
-        <div className="flex items-center gap-2 overflow-x-auto">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setCategory(cat)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border cursor-pointer transition-colors ${
-                category === cat
-                  ? 'bg-emerald-700 text-white border-emerald-700'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Unified SKU Grid */}
-      <div className="max-w-7xl mx-auto px-4 py-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {filteredProducts.map((product) => {
-          const inCart = cart.find((i) => i.productId === product.id);
-          const savings = product.kioskComparePrice - product.studentPrice;
-          const stock = getAvailableStock(product.id);
-          const CatIcon = getCategoryIcon(product.category);
-
-          return (
-            <div
-              key={product.id}
-              className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col justify-between gap-4"
-            >
-              <div className="space-y-3">
-                <div className="flex items-start justify-between">
-                  <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center">
-                    <CatIcon className="w-5 h-5" />
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-semibold">
-                    Save ₦{savings.toLocaleString()}
-                  </span>
-                </div>
-
-                <div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <h3 className="font-bold text-slate-900 text-sm">{product.name}</h3>
-                    {product.isBulkItem && (
-                      <span className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-semibold">
-                        Bulk Item (+₦250)
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500">{product.unit}</p>
-                </div>
-              </div>
-
-              <div className="space-y-3 pt-2 border-t border-slate-100">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-lg font-extrabold text-slate-900">
-                    ₦{product.studentPrice.toLocaleString()}
-                  </span>
-                  <span className="text-xs text-slate-400 line-through">
-                    Kiosk: ₦{product.kioskComparePrice.toLocaleString()}
-                  </span>
-                </div>
-
-                {stock === 0 ? (
-                  <button
-                    disabled
-                    className="w-full py-2.5 px-3 rounded-xl bg-slate-100 text-slate-400 text-xs font-semibold cursor-not-allowed"
-                  >
-                    Out of Stock
-                  </button>
-                ) : !inCart ? (
-                  <button
-                    onClick={() => addToCart(product.id, 1)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Add to Basket</span>
-                  </button>
-                ) : (
-                  <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl p-1">
-                    <button
-                      onClick={() => updateCartQty(product.id, inCart.qty - 1)}
-                      className="w-8 h-8 rounded-lg bg-white border border-emerald-200 flex items-center justify-center text-emerald-700 cursor-pointer"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </button>
-                    <span className="text-sm font-bold text-emerald-900">{inCart.qty}</span>
-                    <button
-                      onClick={() => updateCartQty(product.id, inCart.qty + 1)}
-                      className="w-8 h-8 rounded-lg bg-emerald-700 text-white flex items-center justify-center cursor-pointer"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Slide-Over Cart Drawer */}
-      {cartOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex justify-end">
-          <div className="bg-white w-full max-w-md h-full flex flex-col justify-between border-l border-slate-200 shadow-2xl">
-            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-              <div>
-                <h2 className="font-bold text-slate-900 text-base">Your Batch Basket</h2>
-                <p className="text-xs text-slate-500">
-                  Drop-off: {selectedZone} • {selectedHub}
-                </p>
-              </div>
+      {/* Category tabs */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-10">
+        <div className="flex items-center gap-7 overflow-x-auto border-b-2 border-ink/10" role="tablist" aria-label="Categories">
+          {categories.map((cat) => {
+            const active = category === cat;
+            return (
               <button
-                onClick={() => setCartOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+                key={cat}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setCategory(cat)}
+                className={`relative shrink-0 pb-3 pt-1 font-display text-sm font-medium uppercase tracking-[0.14em] transition-colors cursor-pointer ${
+                  active ? 'text-ink' : 'text-muted hover:text-ink'
+                }`}
               >
-                <X className="w-5 h-5" />
+                {cat}
+                {active && (
+                  <motion.span
+                    layoutId="cat-underline"
+                    className="absolute inset-x-0 -bottom-0.5 h-[3px] bg-accent-500"
+                    transition={{ duration: 0.35, ease: SNAP }}
+                  />
+                )}
               </button>
-            </div>
+            );
+          })}
+        </div>
+      </div>
 
-            <div className="flex-1 overflow-y-auto p-5 space-y-5">
-              {cartDetails.length === 0 ? (
-                <div className="text-center py-12 space-y-2">
-                  <ShoppingCart className="w-10 h-10 text-slate-300 mx-auto" />
-                  <p className="text-sm font-medium text-slate-600">Your basket is empty</p>
-                  <p className="text-xs text-slate-400">
-                    Add staples from the unified market to join the next batch.
+      {/* Product grid */}
+      <motion.div layout className="max-w-7xl mx-auto px-4 sm:px-6 pt-10 grid grid-cols-2 gap-x-4 gap-y-10 sm:gap-x-6 lg:grid-cols-4">
+        <AnimatePresence mode="popLayout" initial={false}>
+          {filteredProducts.map((product, i) => (
+            <motion.div
+              key={product.id}
+              layout
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0, transition: { duration: 0.45, ease: OUT, delay: i * 0.04 } }}
+              exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+            >
+              <ProductCard
+                product={product}
+                qty={qtyOf(product.id)}
+                onAdd={(id) => addToCart(id, 1)}
+                onChangeQty={updateCartQty}
+                eager={i < 4}
+              />
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* Mobile basket bar */}
+      <AnimatePresence>
+        {cartCount > 0 && !cartOpen && (
+          <motion.button
+            type="button"
+            onClick={() => setCartOpen(true)}
+            initial={{ y: 90 }}
+            animate={{ y: 0 }}
+            exit={{ y: 90 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+            className="md:hidden fixed inset-x-3 bottom-[4.5rem] z-40 flex h-14 items-center justify-between rounded-md bg-accent-500 px-4 font-display uppercase tracking-[0.1em] text-ink shadow-[0_12px_30px_-10px_rgb(0_0_0/0.5)] cursor-pointer"
+          >
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <ShoppingBasket className="h-5 w-5" /> {cartCount} in basket
+            </span>
+            <span className="flex items-center gap-1.5 text-base font-semibold">
+              ₦{itemsSubtotal.toLocaleString()} <ArrowRight className="h-4 w-4" />
+            </span>
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* Basket drawer */}
+      <AnimatePresence>
+        {cartOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 flex justify-end"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 1 }}
+          >
+            <motion.div
+              className="absolute inset-0 bg-ink/60"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              onClick={() => setCartOpen(false)}
+            />
+            <motion.aside
+              role="dialog"
+              aria-modal="true"
+              aria-label="Your batch basket"
+              className="relative flex h-full w-full max-w-md flex-col bg-white"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ duration: 0.5, ease: SNAP }}
+            >
+              <div className="flex items-start justify-between bg-ink px-6 py-5 text-white">
+                <div>
+                  <h2 className="font-display text-2xl font-medium uppercase">Your batch basket</h2>
+                  <p className="mt-1 text-sm text-white/60">
+                    Drop-off: {selectedZone} · {selectedHub}
                   </p>
                 </div>
-              ) : (
-                <>
-                  {/* Savings Badge */}
-                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-2.5 text-emerald-800">
-                    <Sparkles className="w-4 h-4 shrink-0 text-emerald-700" />
-                    <span className="text-xs font-semibold">
-                      You saved ₦{totalSavings.toLocaleString()} vs. Campus Kiosks!
-                    </span>
-                  </div>
-
-                  {/* Items */}
-                  <div className="space-y-2.5">
-                    {cartDetails.map(({ product, qty }) => (
-                      <div
-                        key={product.id}
-                        className="p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-3"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-xl">{product.emoji}</span>
-                          <div>
-                            <p className="text-xs font-bold text-slate-900">{product.name}</p>
-                            <p className="text-[11px] text-slate-500">
-                              ₦{product.studentPrice.toLocaleString()} × {qty}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => updateCartQty(product.id, qty - 1)}
-                            className="w-7 h-7 rounded-lg border border-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
-                          >
-                            <Minus className="w-3.5 h-3.5" />
-                          </button>
-                          <span className="text-xs font-bold w-4 text-center">{qty}</span>
-                          <button
-                            onClick={() => updateCartQty(product.id, qty + 1)}
-                            className="w-7 h-7 rounded-lg border border-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Lecture-Aligned Batch Picker */}
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>Lecture-Aligned Batch Slot</span>
-                    </p>
-                    <div className="space-y-2">
-                      {BATCH_SLOTS.map((slot) => {
-                        const fullLabel = `${slot.label} (${slot.time})`;
-                        const selected = selectedBatchSlot === fullLabel;
-                        return (
-                          <label
-                            key={slot.id}
-                            className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer ${
-                              selected
-                                ? 'border-emerald-700 bg-emerald-50/50'
-                                : 'border-slate-200 hover:bg-slate-50'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <input
-                                type="radio"
-                                name="batchSlot"
-                                checked={selected}
-                                onChange={() => setSelectedBatchSlot(fullLabel)}
-                                className="accent-emerald-700"
-                              />
-                              <div>
-                                <p className="text-xs font-bold text-slate-900">{slot.label}</p>
-                                <p className="text-[11px] text-slate-500">{slot.time}</p>
-                              </div>
-                            </div>
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                              {slot.badge}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {cartDetails.length > 0 && (
-              <div className="p-5 border-t border-slate-200 bg-slate-50 space-y-3">
-                <div className="space-y-1 text-xs">
-                  <div className="flex justify-between text-slate-600">
-                    <span>Items Subtotal</span>
-                    <span>₦{itemsSubtotal.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>
-                      Tiered Delivery Fee (
-                      {itemsSubtotal <= 10000 ? '₦1–₦10k' : '₦10k+ Bracket'})
-                    </span>
-                    <span>₦{baseFee.toLocaleString()}</span>
-                  </div>
-                  {bulkSurcharge > 0 && (
-                    <div className="flex justify-between text-amber-700">
-                      <span>Bulk Item Surcharge ({bulkCount}× ₦250)</span>
-                      <span>+₦{bulkSurcharge.toLocaleString()}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-sm font-bold text-slate-900 pt-1 border-t border-slate-200">
-                    <span>Total</span>
-                    <span>₦{totalPayable.toLocaleString()}</span>
-                  </div>
-                </div>
-
                 <button
-                  onClick={() => setCheckoutOpen(true)}
-                  className="w-full py-3 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-sm flex items-center justify-center gap-2 cursor-pointer"
+                  onClick={() => setCartOpen(false)}
+                  className="flex h-10 w-10 items-center justify-center rounded-md text-white/70 transition-colors hover:bg-white/10 hover:text-white cursor-pointer"
+                  aria-label="Close basket"
                 >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Proceed to Checkout</span>
+                  <X className="h-5 w-5" />
                 </button>
               </div>
-            )}
-          </div>
-        </div>
-      )}
+
+              <div className="flex-1 overflow-y-auto px-6 py-6 space-y-7" data-lenis-prevent>
+                {cartDetails.length === 0 ? (
+                  <div className="py-16 text-center">
+                    <ShoppingBasket className="mx-auto h-12 w-12 text-ink/20" />
+                    <p className="mt-4 font-display text-lg uppercase text-ink">Your basket is empty</p>
+                    <p className="mt-1 text-sm text-muted">Add staples from the unified market to join the next batch.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3 rounded-md bg-brand-700 px-4 py-3 text-white">
+                      <BadgePercent className="h-5 w-5 shrink-0 text-accent-400" />
+                      <span className="text-sm font-semibold">
+                        You saved ₦{totalSavings.toLocaleString()} vs. Campus Kiosks!
+                      </span>
+                    </div>
+
+                    <ul className="divide-y divide-ink/10">
+                      <AnimatePresence initial={false}>
+                        {cartDetails.map(({ product, qty }) => (
+                          <motion.li
+                            key={product.id}
+                            layout
+                            initial={{ opacity: 0, x: 30 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -30, height: 0 }}
+                            transition={{ duration: 0.3, ease: OUT }}
+                            className="flex items-center gap-4 py-4"
+                          >
+                            <div className="h-16 w-16 shrink-0 rounded-md bg-tile p-1.5">
+                              {getProductImage(product.id) ? (
+                                <img src={getProductImage(product.id)} alt="" className="h-full w-full object-contain" />
+                              ) : (
+                                <span className="flex h-full items-center justify-center text-2xl">{product.emoji}</span>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-display text-base font-medium uppercase leading-tight text-ink">{product.name}</p>
+                              <p className="mt-0.5 text-sm text-muted">
+                                ₦{product.studentPrice.toLocaleString()} × {qty}
+                              </p>
+                            </div>
+                            <div className="flex items-center rounded-md border-2 border-ink/10">
+                              <button
+                                onClick={() => updateCartQty(product.id, qty - 1)}
+                                className="flex h-9 w-9 items-center justify-center text-ink transition-colors hover:bg-tile cursor-pointer"
+                                aria-label={`Remove one ${product.name}`}
+                              >
+                                <Minus className="h-3.5 w-3.5" />
+                              </button>
+                              <span className="w-6 text-center font-display text-sm font-medium tabular-nums">{qty}</span>
+                              <button
+                                onClick={() => updateCartQty(product.id, qty + 1)}
+                                className="flex h-9 w-9 items-center justify-center text-ink transition-colors hover:bg-tile cursor-pointer"
+                                aria-label={`Add one more ${product.name}`}
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </motion.li>
+                        ))}
+                      </AnimatePresence>
+                    </ul>
+
+                    <fieldset>
+                      <legend className="flex items-center gap-2 font-display text-xs font-medium uppercase tracking-[0.2em] text-accent-700">
+                        <Clock className="h-4 w-4" /> Lecture-aligned batch slot
+                      </legend>
+                      <div className="mt-3 space-y-2.5">
+                        {BATCH_SLOTS.map((slot) => {
+                          const fullLabel = `${slot.label} (${slot.time})`;
+                          const selected = selectedBatchSlot === fullLabel;
+                          return (
+                            <label
+                              key={slot.id}
+                              className={`flex cursor-pointer items-center justify-between rounded-md border-2 px-4 py-3 transition-colors ${
+                                selected ? 'border-accent-500 bg-accent-50' : 'border-ink/10 hover:border-ink/25'
+                              }`}
+                            >
+                              <span className="flex items-center gap-3">
+                                <input
+                                  type="radio"
+                                  name="batchSlot"
+                                  checked={selected}
+                                  onChange={() => setSelectedBatchSlot(fullLabel)}
+                                  className="h-4 w-4 accent-accent-600"
+                                />
+                                <span>
+                                  <span className="block font-display text-base font-medium uppercase text-ink">{slot.label}</span>
+                                  <span className="block text-sm text-muted">{slot.time}</span>
+                                </span>
+                              </span>
+                              <span className="rounded bg-ink px-2 py-1 font-display text-[10px] uppercase tracking-[0.12em] text-white">
+                                {slot.badge}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                  </>
+                )}
+              </div>
+
+              {cartDetails.length > 0 && (
+                <div className="border-t-2 border-ink/10 bg-canvas px-6 py-5 space-y-4">
+                  <dl className="space-y-1.5 text-[0.95rem]">
+                    <div className="flex justify-between text-muted">
+                      <dt>Items subtotal</dt>
+                      <dd className="tabular-nums">₦{itemsSubtotal.toLocaleString()}</dd>
+                    </div>
+                    <div className="flex justify-between text-muted">
+                      <dt>Flat batch delivery fee</dt>
+                      <dd className="tabular-nums">₦{DELIVERY_FEE.toLocaleString()}</dd>
+                    </div>
+                    <div className="flex items-baseline justify-between border-t border-ink/10 pt-2 font-display uppercase text-ink">
+                      <dt className="text-lg">Total</dt>
+                      <dd className="text-3xl font-semibold tabular-nums">₦{totalPayable.toLocaleString()}</dd>
+                    </div>
+                  </dl>
+                  <Button onClick={() => setCheckoutOpen(true)} size="lg" variant="accent" className="w-full">
+                    Proceed to checkout <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </motion.aside>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <CheckoutModal
         isOpen={checkoutOpen}

@@ -1,29 +1,48 @@
 import React, { useState } from 'react';
-import { Store, Wallet, CheckCircle2, Circle, Package, Save } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { Wallet, Check, Package, Save, ShoppingBag } from 'lucide-react';
 import { useLodgeMart } from '../context/LodgeMartContext';
-import { useToast } from '../context/ToastContext';
+import { getProductImage } from '../data/productImages';
+import PageHeader from '../components/ui/PageHeader';
+import PortalSection from '../components/ui/PortalSection';
+import Reveal from '../components/ui/Reveal';
+
+const OUT = [0.16, 1, 0.3, 1];
+
+function Thumb({ productId, className = 'h-12 w-12' }) {
+  const src = getProductImage(productId);
+  return (
+    <span className={`shrink-0 rounded bg-tile p-1 ${className}`}>
+      {src && <img src={src} alt="" className="h-full w-full object-contain" />}
+    </span>
+  );
+}
+
+function NumberInput({ label, ...props }) {
+  return (
+    <label className="block">
+      <span className="font-display text-[10px] font-medium uppercase tracking-[0.18em] text-muted">{label}</span>
+      <input
+        type="number"
+        min={0}
+        {...props}
+        className="mt-1 h-11 w-full rounded-md border-2 border-ink/10 bg-white px-3 font-display text-base font-medium text-ink transition-colors focus:border-accent-500 focus:outline-none"
+      />
+    </label>
+  );
+}
 
 export default function VendorPortalPage() {
-  const {
-    currentUser,
-    vendors,
-    products,
-    orderItems,
-    orders,
-    toggleItemPacked,
-    updateVendorInventory,
-  } = useLodgeMart();
+  const { currentUser, vendors, products, orderItems, orders, toggleItemPacked, updateVendorInventory } = useLodgeMart();
 
   const vendor = vendors.find((v) => v.id === currentUser?.vendorId);
-  const { addToast } = useToast();
   const [drafts, setDrafts] = useState({});
+  const [savedId, setSavedId] = useState('');
 
   if (!vendor) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <p className="text-sm text-slate-600">
-          Please sign in with a Vendor account to access your stall portal.
-        </p>
+      <div className="flex min-h-screen items-center justify-center bg-canvas p-6">
+        <p className="text-muted">Please sign in with a Vendor account to access your stall portal.</p>
       </div>
     );
   }
@@ -34,12 +53,7 @@ export default function VendorPortalPage() {
   // Bulk Summary grouped by productId
   const bulkMap = pendingItems.reduce((acc, item) => {
     if (!acc[item.productId]) {
-      acc[item.productId] = {
-        productId: item.productId,
-        productName: item.productName,
-        unit: item.unit,
-        totalQty: 0,
-      };
+      acc[item.productId] = { productId: item.productId, productName: item.productName, unit: item.unit, totalQty: 0 };
     }
     acc[item.productId].totalQty += item.qty;
     return acc;
@@ -63,222 +77,168 @@ export default function VendorPortalPage() {
   const taggedBags = Object.values(bagsMap);
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 md:pb-12">
-      <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        {/* Zero-Holdback Ledger Header */}
-        <div className="bg-emerald-700 text-white rounded-2xl p-6 flex flex-wrap items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-emerald-100 text-xs font-semibold flex-wrap">
-              <Store className="w-4 h-4" />
-              <span>
-                {vendor.name} • {vendor.market} ({vendor.stallNumber}) • {vendor.ratingScore}★
-              </span>
-              {vendor.priorityTier && (
-                <span className="px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-300/40 text-amber-100 text-[10px] font-bold">
-                  Priority Supplier Tier
-                </span>
-              )}
-            </div>
-            <h1 className="text-2xl font-extrabold">
-              ₦{vendor.walletBalance.toLocaleString()}
-            </h1>
-            <p className="text-xs text-emerald-100">
-              Available / Paid Today • {vendor.bankAccount}
-            </p>
-          </div>
-
-          <div className="px-4 py-2.5 rounded-xl bg-white/15 border border-white/20 flex items-center gap-2">
-            <Wallet className="w-4 h-4 text-emerald-200" />
-            <span className="text-xs font-semibold">
-              100% Instant Payout on Rider Pickup — ₦0 Withheld
-            </span>
-          </div>
-        </div>
-
-        {/* Bulk Summary */}
-        <section className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
-          <h2 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-            <Package className="w-4 h-4 text-emerald-700" />
-            <span>Bulk Summary (Total to Measure)</span>
-          </h2>
-          {bulkSummary.length === 0 ? (
-            <p className="text-xs text-slate-500">All assigned items have been picked up.</p>
-          ) : (
-            <div className="grid sm:grid-cols-3 gap-3">
-              {bulkSummary.map((b) => (
-                <div
-                  key={b.productId}
-                  className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between"
-                >
-                  <div>
-                    <p className="text-xs font-bold text-slate-900">{b.productName}</p>
-                    <p className="text-[11px] text-slate-500">{b.unit}</p>
-                  </div>
-                  <span className="text-lg font-extrabold text-emerald-700">{b.totalQty}×</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Tagged Student Bags */}
-        <section className="space-y-3">
-          <h2 className="font-bold text-slate-900 text-sm">
-            Tagged Student Bags ({taggedBags.length})
-          </h2>
-
-          {taggedBags.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500">
-              No pending bags to pack right now.
-            </div>
-          ) : (
-            <div className="grid sm:grid-cols-2 gap-4">
-              {taggedBags.map((bag) => (
-                <div
-                  key={bag.orderId}
-                  className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3"
-                >
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-                    <div>
-                      <span className="font-extrabold text-slate-900 text-sm">
-                        Tag {bag.orderId}
-                      </span>
-                      <p className="text-[11px] text-slate-500">{bag.hub}</p>
-                    </div>
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                      {bag.items.filter((i) => i.vendorPacked).length}/{bag.items.length} Packed
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    {bag.items.map((item) => (
-                      <button
-                        key={item.itemId}
-                        onClick={() => toggleItemPacked(item.itemId)}
-                        className={`w-full p-3 rounded-xl border flex items-center justify-between text-left transition-colors cursor-pointer ${
-                          item.vendorPacked
-                            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                            : 'bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div>
-                          <p className="text-xs font-bold">
-                            {item.qty}× {item.productName}
-                          </p>
-                          <p className="text-[11px] opacity-75">
-                            Wholesale: ₦{(item.wholesaleCost * item.qty).toLocaleString()}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs font-semibold">
-                          {item.vendorPacked ? (
-                            <>
-                              <CheckCircle2 className="w-5 h-5 text-emerald-700" />
-                              <span className="text-emerald-700">Packed</span>
-                            </>
-                          ) : (
-                            <>
-                              <Circle className="w-5 h-5 text-slate-400" />
-                              <span>Mark Packed</span>
-                            </>
-                          )}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* My Stall Inventory & Prices */}
-        <section className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+    <div className="min-h-screen bg-canvas pb-24 md:pb-16">
+      <PageHeader kicker={`${vendor.name} · ${vendor.market} (${vendor.stallNumber})`} title="Stall portal">
+        <div className="mt-6 flex flex-wrap items-end justify-between gap-6">
           <div>
-            <h2 className="font-bold text-slate-900 text-sm">
-              My Stall Inventory &amp; Wholesale Prices
-            </h2>
-            <p className="text-xs text-slate-500">
-              Update your wholesale price (₦) and available stock quantity for each product.
+            <p className="font-display text-xs uppercase tracking-[0.2em] text-white/60">Available / Paid Today</p>
+            <p className="mt-1 font-display text-6xl sm:text-7xl font-semibold leading-none tabular-nums">
+              ₦{vendor.walletBalance.toLocaleString()}
             </p>
+            <p className="mt-2 text-sm text-white/60">{vendor.bankAccount}</p>
           </div>
+          <span className="flex items-center gap-2 rounded-md bg-accent-500 px-4 py-3 font-display text-xs font-medium uppercase tracking-[0.12em] text-ink">
+            <Wallet className="h-4 w-4" /> 100% Instant Payout on Rider Pickup — ₦0 Withheld
+          </span>
+        </div>
+      </PageHeader>
 
-          <div className="divide-y divide-slate-200">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-12 space-y-14">
+        {/* Bulk summary */}
+        <PortalSection kicker="Total to measure" title="Bulk summary" icon={Package}>
+          {bulkSummary.length === 0 ? (
+            <p className="rounded-lg bg-white p-6 text-muted">All assigned items have been picked up.</p>
+          ) : (
+            <Reveal stagger={0.08} className="grid gap-4 sm:grid-cols-3">
+              {bulkSummary.map((b) => (
+                <Reveal.Item key={b.productId} className="flex items-center gap-4 rounded-lg bg-white p-4 shadow-[0_8px_24px_-16px_rgb(0_0_0/0.35)]">
+                  <Thumb productId={b.productId} className="h-16 w-16" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-display text-base font-medium uppercase leading-tight text-ink">{b.productName}</p>
+                    <p className="text-sm text-muted">{b.unit}</p>
+                  </div>
+                  <span className="font-display text-4xl font-semibold text-accent-600">{b.totalQty}×</span>
+                </Reveal.Item>
+              ))}
+            </Reveal>
+          )}
+        </PortalSection>
+
+        {/* Tagged bags */}
+        <PortalSection kicker="Pack per student" title={`Tagged student bags (${taggedBags.length})`} icon={ShoppingBag}>
+          {taggedBags.length === 0 ? (
+            <p className="rounded-lg bg-white p-8 text-center text-muted">No pending bags to pack right now.</p>
+          ) : (
+            <Reveal stagger={0.1} className="grid gap-5 sm:grid-cols-2">
+              {taggedBags.map((bag) => {
+                const packed = bag.items.filter((i) => i.vendorPacked).length;
+                return (
+                  <Reveal.Item key={bag.orderId} className="overflow-hidden rounded-lg bg-white shadow-[0_8px_24px_-16px_rgb(0_0_0/0.35)]">
+                    <div className="flex items-center justify-between bg-ink px-5 py-4 text-white">
+                      <div>
+                        <p className="font-display text-2xl font-semibold uppercase">Tag {bag.orderId}</p>
+                        <p className="text-sm text-white/60">{bag.hub}</p>
+                      </div>
+                      <span className="font-display text-sm uppercase tracking-[0.12em] text-accent-400">
+                        {packed}/{bag.items.length} Packed
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-ink/10">
+                      <motion.div
+                        className="h-full bg-brand-700"
+                        animate={{ width: `${(packed / bag.items.length) * 100}%` }}
+                        transition={{ duration: 0.5, ease: OUT }}
+                      />
+                    </div>
+                    <div className="space-y-2.5 p-4">
+                      {bag.items.map((item) => (
+                        <button
+                          key={item.itemId}
+                          onClick={() => toggleItemPacked(item.itemId)}
+                          className={`flex w-full items-center gap-3 rounded-md border-2 p-3 text-left transition-colors duration-300 cursor-pointer ${
+                            item.vendorPacked ? 'border-brand-700 bg-brand-50' : 'border-ink/10 hover:border-ink/30'
+                          }`}
+                        >
+                          <Thumb productId={item.productId} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-semibold text-ink">
+                              {item.qty}× {item.productName}
+                            </span>
+                            <span className="block text-sm text-muted">
+                              Wholesale: ₦{(item.wholesaleCost * item.qty).toLocaleString()}
+                            </span>
+                          </span>
+                          <span
+                            className={`flex items-center gap-2 font-display text-xs font-medium uppercase tracking-[0.12em] ${
+                              item.vendorPacked ? 'text-brand-700' : 'text-muted'
+                            }`}
+                          >
+                            <span
+                              className={`flex h-7 w-7 items-center justify-center rounded-full border-2 transition-colors ${
+                                item.vendorPacked ? 'border-brand-700 bg-brand-700 text-white' : 'border-ink/20'
+                              }`}
+                            >
+                              <AnimatePresence>
+                                {item.vendorPacked && (
+                                  <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ type: 'spring', stiffness: 500, damping: 22 }}>
+                                    <Check className="h-4 w-4" />
+                                  </motion.span>
+                                )}
+                              </AnimatePresence>
+                            </span>
+                            {item.vendorPacked ? 'Packed' : 'Mark packed'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </Reveal.Item>
+                );
+              })}
+            </Reveal>
+          )}
+        </PortalSection>
+
+        {/* Inventory */}
+        <PortalSection kicker="Update your wholesale price (₦) and available stock quantity for each product." title="My stall inventory & wholesale prices">
+          <div className="overflow-hidden rounded-lg bg-white shadow-[0_8px_24px_-16px_rgb(0_0_0/0.35)]">
             {Object.entries(vendor.inventory).map(([productId, inv]) => {
               const product = products.find((p) => p.id === productId);
               if (!product) return null;
-              const draft = drafts[productId] || {
-                wholesalePrice: inv.wholesalePrice,
-                stockQty: inv.stockQty,
-              };
-
+              const draft = drafts[productId] || { wholesalePrice: inv.wholesalePrice, stockQty: inv.stockQty };
+              const saved = savedId === productId;
               return (
-                <div
-                  key={productId}
-                  className="py-3 flex flex-wrap items-center justify-between gap-3"
-                >
-                  <div>
-                    <p className="text-xs font-bold text-slate-900">{product.name}</p>
-                    <p className="text-[11px] text-slate-500">{product.unit}</p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
+                <div key={productId} className="flex flex-wrap items-end justify-between gap-4 border-b border-ink/10 px-5 py-4 last:border-0">
+                  <div className="flex items-center gap-3">
+                    <Thumb productId={productId} />
                     <div>
-                      <label className="block text-[10px] text-slate-400">Price (₦)</label>
-                      <input
-                        type="number"
-                        min={0}
+                      <p className="font-display text-base font-medium uppercase text-ink">{product.name}</p>
+                      <p className="text-sm text-muted">{product.unit}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-end gap-2.5">
+                    <div className="w-28">
+                      <NumberInput
+                        label="Price (₦)"
                         value={draft.wholesalePrice}
-                        onChange={(e) =>
-                          setDrafts((prev) => ({
-                            ...prev,
-                            [productId]: {
-                              ...draft,
-                              wholesalePrice: e.target.value,
-                            },
-                          }))
-                        }
-                        className="w-24 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold"
+                        onChange={(e) => setDrafts((prev) => ({ ...prev, [productId]: { ...draft, wholesalePrice: e.target.value } }))}
                       />
                     </div>
-                    <div>
-                      <label className="block text-[10px] text-slate-400">Stock Qty</label>
-                      <input
-                        type="number"
-                        min={0}
+                    <div className="w-24">
+                      <NumberInput
+                        label="Stock Qty"
                         value={draft.stockQty}
-                        onChange={(e) =>
-                          setDrafts((prev) => ({
-                            ...prev,
-                            [productId]: {
-                              ...draft,
-                              stockQty: e.target.value,
-                            },
-                          }))
-                        }
-                        className="w-20 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold"
+                        onChange={(e) => setDrafts((prev) => ({ ...prev, [productId]: { ...draft, stockQty: e.target.value } }))}
                       />
                     </div>
                     <button
                       onClick={() => {
-                        updateVendorInventory(
-                          vendor.id,
-                          productId,
-                          draft.wholesalePrice,
-                          draft.stockQty
-                        );
-                        addToast(`Updated ${product.name} price & stock`);
+                        updateVendorInventory(vendor.id, productId, draft.wholesalePrice, draft.stockQty);
+                        setSavedId(productId);
+                        setTimeout(() => setSavedId(''), 1500);
                       }}
-                      className="mt-3.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                      className={`flex h-11 w-24 items-center justify-center gap-1.5 rounded-md font-display text-xs font-medium uppercase tracking-[0.14em] transition-colors duration-300 cursor-pointer active:scale-[0.97] ${
+                        saved ? 'bg-brand-700 text-white' : 'bg-ink text-white hover:bg-accent-500 hover:text-ink'
+                      }`}
                     >
-                      <Save className="w-3.5 h-3.5" />
-                      <span>Save</span>
+                      {saved ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+                      {saved ? 'Saved' : 'Save'}
                     </button>
                   </div>
                 </div>
               );
             })}
           </div>
-        </section>
+        </PortalSection>
       </div>
     </div>
   );

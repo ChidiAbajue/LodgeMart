@@ -1,0 +1,7 @@
+server
+screenshots
+node_modules
+dist
+.env*
+**/.env*
+.taste-skill

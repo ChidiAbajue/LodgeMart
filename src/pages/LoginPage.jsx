@@ -1,8 +1,27 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Mail, Loader2, ArrowRight, ChevronDown } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Lock, Mail, Loader2, ArrowRight } from 'lucide-react';
 import { SANDBOX_ACCOUNTS } from '../data/seedData';
 import { useLodgeMart } from '../context/LodgeMartContext';
+
+const SNAP = [0.7, 0, 0.2, 1];
+const OUT = [0.16, 1, 0.3, 1];
+
+function Field({ label, icon: Icon, ...props }) {
+  return (
+    <label className="block">
+      <span className="font-display text-xs font-medium uppercase tracking-[0.18em] text-ink">{label}</span>
+      <span className="relative mt-2 flex items-center">
+        <Icon className="pointer-events-none absolute left-4 h-4 w-4 text-muted" />
+        <input
+          {...props}
+          className="h-13 w-full rounded-md border-2 border-ink/10 bg-white pl-11 pr-4 text-base text-ink placeholder:text-muted/60 transition-colors focus:border-accent-500 focus:outline-none"
+        />
+      </span>
+    </label>
+  );
+}
 
 export default function LoginPage() {
   const { login } = useLodgeMart();
@@ -12,7 +31,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [sandboxOpen, setSandboxOpen] = useState(false);
 
   const performLogin = (targetEmail, targetPassword) => {
     setError('');
@@ -25,7 +43,7 @@ export default function LoginPage() {
         return;
       }
       navigate(res.user.homeRoute);
-    }, 350);
+    }, 400);
   };
 
   const handleSubmit = (e) => {
@@ -40,135 +58,131 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-slate-50 flex items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-xs space-y-6">
-        <div className="text-center space-y-2">
-          <svg
-            width="44"
-            height="44"
-            viewBox="0 0 36 36"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-            className="mx-auto"
-          >
-            <rect width="36" height="36" rx="10" fill="#047857" />
-            <path
-              d="M11 15.5H25L23.5 25.5H12.5L11 15.5Z"
-              stroke="white"
-              strokeWidth="2"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M14.5 15.5V13C14.5 11.067 16.067 9.5 18 9.5C19.933 9.5 21.5 11.067 21.5 13V15.5"
-              stroke="white"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-            <circle cx="18" cy="20.5" r="1.5" fill="#FBBF24" />
-          </svg>
-          <h1 className="text-xl font-bold text-slate-900">Sign in to LodgeMart</h1>
-          <p className="text-sm text-slate-500">
-            UNIZIK Campus Batch Foodstuff &amp; Operations
-          </p>
+    <div className="grid min-h-[calc(100svh-4rem)] bg-canvas lg:grid-cols-2">
+      {/* Photo panel */}
+      <div className="relative hidden overflow-hidden bg-ink text-white lg:block">
+        <motion.img
+          src="/images/hero-eke-awka.webp"
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          initial={{ scale: 1.15 }}
+          animate={{ scale: 1 }}
+          transition={{ duration: 1.8, ease: OUT }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/70 to-ink/40" />
+        <div className="relative flex h-full flex-col justify-end p-12 xl:p-16">
+          <p className="font-display text-xs uppercase tracking-[0.3em] text-accent-400">UNIZIK Pilot</p>
+          <h2 className="mt-3 overflow-hidden font-display text-6xl xl:text-7xl font-semibold uppercase leading-[0.95]">
+            <motion.span className="block" initial={{ y: '105%' }} animate={{ y: 0 }} transition={{ duration: 0.8, ease: SNAP, delay: 0.1 }}>
+              Eke Awka prices,
+            </motion.span>
+          </h2>
+          <h2 className="overflow-hidden font-display text-6xl xl:text-7xl font-semibold uppercase leading-[0.95] text-accent-500">
+            <motion.span className="block" initial={{ y: '105%' }} animate={{ y: 0 }} transition={{ duration: 0.8, ease: SNAP, delay: 0.2 }}>
+              lodge junction.
+            </motion.span>
+          </h2>
+          <p className="mt-5 max-w-md text-white/70">UNIZIK Campus Batch Foodstuff &amp; Operations Platform</p>
         </div>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="login-email" className="block text-xs font-semibold text-slate-700 mb-1">
-              Email Address
-            </label>
-            <div className="relative">
-              <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-              <input
-                id="login-email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@unizik.edu.ng"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-emerald-700"
-              />
-            </div>
-          </div>
+      {/* Form panel */}
+      <div className="flex items-center justify-center px-4 py-12 sm:px-10">
+        <motion.div
+          className="w-full max-w-md"
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, ease: OUT }}
+        >
+          <p className="font-display text-xs font-medium uppercase tracking-[0.3em] text-accent-700">Portal sign in</p>
+          <h1 className="mt-3 font-display text-5xl font-semibold uppercase leading-none text-ink">Sign in to LodgeMart</h1>
+          <p className="mt-3 text-muted lg:hidden">UNIZIK Campus Batch Foodstuff &amp; Operations Platform</p>
 
-          <div>
-            <label htmlFor="login-password" className="block text-xs font-semibold text-slate-700 mb-1">
-              Password
-            </label>
-            <div className="relative">
-              <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-              <input
-                id="login-password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-emerald-700"
-              />
-            </div>
-          </div>
-
-          {error && (
-            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs font-medium text-red-700">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white font-semibold text-sm flex items-center justify-center gap-2 cursor-pointer"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Signing in...</span>
-              </>
-            ) : (
-              <>
-                <span>Sign In</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </form>
-
-        <div className="pt-3 border-t border-slate-200">
-          <button
-            type="button"
-            onClick={() => setSandboxOpen((prev) => !prev)}
-            className="w-full flex items-center justify-between text-xs font-semibold text-slate-500 hover:text-slate-800 py-1 cursor-pointer"
-          >
-            <span>Developer Sandbox Accounts</span>
-            <ChevronDown
-              className={`w-4 h-4 transition-transform ${sandboxOpen ? 'rotate-180' : ''}`}
+          <form onSubmit={handleSubmit} className="mt-9 space-y-5">
+            <Field
+              label="Email address"
+              icon={Mail}
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@unizik.edu.ng"
+              autoComplete="email"
             />
-          </button>
+            <Field
+              label="Password"
+              icon={Lock}
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+            />
 
-          {sandboxOpen && (
-            <div className="mt-2.5 grid grid-cols-1 gap-2">
-              {SANDBOX_ACCOUNTS.map((acc) => (
-                <button
+            {error && (
+              <motion.p
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: [0, -6, 6, -3, 0] }}
+                transition={{ duration: 0.4 }}
+                role="alert"
+                className="rounded-md border-2 border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
+              >
+                {error}
+              </motion.p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="relative isolate flex h-14 w-full items-center justify-center gap-2 overflow-hidden rounded-md bg-accent-500 font-display text-sm font-medium uppercase tracking-[0.14em] text-ink transition-colors duration-300 hover:text-white disabled:opacity-60 cursor-pointer before:absolute before:inset-0 before:-z-10 before:origin-left before:scale-x-0 before:bg-ink before:transition-transform before:duration-300 before:ease-[cubic-bezier(0.7,0,0.2,1)] hover:before:scale-x-100 active:scale-[0.98]"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Signing in...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign in</span>
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-10">
+            <p className="flex items-center gap-3 font-display text-xs font-medium uppercase tracking-[0.2em] text-muted">
+              <span className="h-px flex-1 bg-ink/10" />
+              Quick sign-in (sandbox accounts)
+              <span className="h-px flex-1 bg-ink/10" />
+            </p>
+            <div className="mt-4 grid gap-2.5">
+              {SANDBOX_ACCOUNTS.map((acc, i) => (
+                <motion.button
                   key={acc.email}
                   type="button"
                   disabled={loading}
                   onClick={() => handleQuickFill(acc)}
-                  className="w-full text-left px-3.5 py-2.5 rounded-xl border border-slate-200 hover:border-emerald-700 hover:bg-emerald-50/40 transition-colors flex items-center justify-between cursor-pointer"
+                  initial={{ opacity: 0, x: 24 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.5, ease: OUT, delay: 0.25 + i * 0.07 }}
+                  className="group relative flex w-full items-center justify-between overflow-hidden rounded-md border-2 border-ink/10 bg-white px-4 py-3 text-left transition-colors duration-300 hover:border-ink cursor-pointer"
                 >
-                  <div>
-                    <p className="text-xs font-semibold text-slate-900">{acc.email}</p>
-                    <p className="text-[11px] text-slate-500">{acc.subtitle}</p>
-                  </div>
-                  <span className="text-xs font-semibold text-emerald-700 capitalize">
-                    {acc.role} →
+                  <span className="absolute inset-y-0 left-0 w-1 origin-bottom scale-y-0 bg-accent-500 transition-transform duration-300 group-hover:scale-y-100" />
+                  <span>
+                    <span className="block text-sm font-semibold text-ink">{acc.email}</span>
+                    <span className="block text-sm text-muted">{acc.subtitle}</span>
                   </span>
-                </button>
+                  <span className="flex items-center gap-1.5 font-display text-xs font-medium uppercase tracking-[0.14em] text-accent-700">
+                    {acc.role}
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-1" />
+                  </span>
+                </motion.button>
               ))}
             </div>
-          )}
-        </div>
+          </div>
+        </motion.div>
       </div>
     </div>
   );
