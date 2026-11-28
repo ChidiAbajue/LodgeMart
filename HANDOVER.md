@@ -154,7 +154,7 @@ tests/        phase1..phase4.test.js (vitest + supertest, against the lodgemart_
 | 1 | Express, Prisma schema, Postgres+Redis, env validation, helmet, CORS, health, seed | ✅ verified, pushed |
 | 2 | Auth: register/login/logout/me, JWT + Redis revocation, bcrypt 12, roles, rate limits | ✅ verified, pushed |
 | 3 | Catalog, wallet orders (routing, no overselling), my orders, cancel, delegate | ✅ verified, pushed |
-| 4 | Vendor packing + inventory; rider manifest, stall pickup, hub arrival, PIN handover, earnings | 🟨 built + tested + manual run OK; **security checklist not finished** (see below) |
+| 4 | Vendor packing + inventory; rider manifest, stall pickup, hub arrival, PIN handover, earnings | ✅ verified 2026-11-28, pushed |
 | 5 | Paystack (test mode): initialize, webhook, vendor transfers; photo upload | ⬜ next |
 | 6 | Ratings + admin summary | ⬜ |
 | 7 | API docs for Chidi, frontend wiring, deploy API (Render/Railway) | ⬜ |
@@ -172,11 +172,7 @@ tests/        phase1..phase4.test.js (vitest + supertest, against the lodgemart_
 - **Results:** 111/111 tests (3 consecutive full runs). Manual run on order #4082: pack → manifest → pickups
   (₦7,150 + ₦5,500 pending) → cancel refused → hub arrival → wrong PIN (4 left) → PIN 4829 collected → ₦150 earning.
 
-### Phase 4: still to do before calling it ✅
-1. `npm audit` (expect 0) and `npx depcheck` (expect only `pg`).
-2. Secret-scan the diff; confirm `git ls-files | grep .env` shows only `.env.example` / `.env.test`.
-3. `npm run db:seed` to reset dev data (the manual run collected #4082).
-4. Update the Phase 4 row and log in `CLAUDE.md` to ✅.
+### Phase 4: checklist completed 2026-11-28 (audit 0, depcheck clean, no env files tracked, 111/111 tests).
 
 ### Phase 5 plan (Paystack test mode + photo upload)
 Needs from the user: **Paystack TEST secret + public keys** (dashboard → Settings → API Keys, `sk_test_…`/`pk_test_…`)

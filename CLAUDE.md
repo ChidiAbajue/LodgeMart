@@ -65,7 +65,7 @@ ogaemeka@lodgemart.ng / mamangozi@lodgemart.ng (vendor), tunde.dispatch@lodgemar
 | 1 | Setup: Express, Prisma schema, Postgres+Redis (docker), env validation, helmet, CORS, error format, seed, `/api/health`, tests | ✅ Verified 2026-11-27 — 14/14 tests, manual run, 0 audit vulns |
 | 2 | Auth: register/login/logout/me, JWT, bcrypt, role + ownership middleware, Redis rate limits | ✅ Verified 2026-11-27 — 42/42 tests, manual run, 0 audit vulns |
 | 3 | Catalog + orders: server-side routing (transaction, no overselling), my orders, cancel, delegate PIN | ✅ Verified 2026-11-27 — 80/80 tests (×3 runs), manual run, 0 audit vulns |
-| 4 | Vendor + rider: packing, stall pickup (per batch), hub arrival, PIN handover (single-use, rate-limited) | 🟨 Built 2026-11-27 — 111/111 tests, manual run OK; security checklist pending (see HANDOVER.md) |
+| 4 | Vendor + rider: packing, stall pickup (per batch), hub arrival, PIN handover (single-use, rate-limited) | ✅ Verified 2026-11-28 — 111/111 tests, manual run, 0 audit vulns |
 | 5 | Paystack (test mode): initialize, webhook (signature + idempotency), vendor transfers; photo upload | ⬜ |
 | 6 | Ratings + admin summary | ⬜ |
 | 7 | API docs for Chidi; frontend wiring support; deploy API (Render/Railway) | ⬜ |
@@ -150,3 +150,7 @@ Business constants: `server/src/config/business.js`. Batch date = today if befor
   frontend session switched the shared folder to `frontend/refurbish`). Vendor packing/inventory, rider manifest,
   per-batch stall pickup (pending payouts), hub arrival, PIN handover (5-attempt lock, single use, unique commission).
   111/111 tests ×3, manual run on #4082 OK. Security checklist interrupted (PC shutdown); **see HANDOVER.md**.
+- **2026-11-28 — Phase 4 verified.** Finished the interrupted checklist: `npm audit` 0, depcheck clean (pg false
+  positive), only `.env.example`/`.env.test` tracked, 111/111 tests, dev data reseeded. Note: first `db:seed` after
+  Docker sat idle overnight failed with P2028 "Unable to start a transaction in the given time"; it succeeded on retry
+  (nothing was holding locks).
